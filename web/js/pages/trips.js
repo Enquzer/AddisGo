@@ -31,7 +31,7 @@ export default async function renderTrips(view, ctx) {
           : 'Revisit a route, download a receipt or rate a driver you enjoyed.',
         actions: `<a class="btn btn-primary" href="${user.role === 'driver' ? '#/driver' : '#/ride'}">${icon(user.role === 'driver' ? 'grid' : 'plus', 17)} ${user.role === 'driver' ? 'Driver dashboard' : 'New ride'}</a>`,
       })}
-      <div class="trip-summary" id="trip-summary"></div>
+      <div class="trip-summary stat-strip" id="trip-summary"></div>
 
       <section class="panel trips-panel">
         <div class="tabs-row">

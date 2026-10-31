@@ -71,7 +71,7 @@ async function renderBooking(view, ctx) {
             <div class="form-alert" id="booking-error" role="alert" hidden></div>
 
             <div class="booking-route-block">
-              <div class="route-field">
+              <div class="route-field is-pickup">
                 <span class="route-node is-start" aria-hidden="true"></span>
                 <div class="autocomplete-wrap">
                   <label class="field">
@@ -82,7 +82,7 @@ async function renderBooking(view, ctx) {
                 </div>
                 <button type="button" class="icon-btn map-pick-btn" data-pick="pickup" title="Choose pickup on map" aria-label="Choose pickup on map">${icon('map-pin', 18)}</button>
               </div>
-              <div class="route-field">
+              <div class="route-field is-dropoff">
                 <span class="route-node is-end" aria-hidden="true"></span>
                 <div class="autocomplete-wrap">
                   <label class="field">
@@ -349,6 +349,8 @@ async function renderBooking(view, ctx) {
         `;
       }).join('');
       dropdownEl.hidden = false;
+      inputEl.closest('.autocomplete-wrap')?.classList.add('is-open');
+      inputEl.closest('.route-field')?.classList.add('is-open');
     };
 
     const closeDropdown = () => {
@@ -356,6 +358,8 @@ async function renderBooking(view, ctx) {
       dropdownEl.innerHTML = '';
       activeIndex = -1;
       currentResults = [];
+      inputEl.closest('.autocomplete-wrap')?.classList.remove('is-open');
+      inputEl.closest('.route-field')?.classList.remove('is-open');
     };
 
     const selectPlace = (place) => {
