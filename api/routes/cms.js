@@ -187,6 +187,10 @@ export async function createEvent(ctx) {
       event.category, event.price, event.image_url, event.status, nowIso()],
   );
   audit(ctx.db, auth.id, 'events.created', `Event #${created.lastInsertRowid} “${event.title}” created`);
+  for (const u of ctx.db.all("SELECT id FROM users WHERE status = 'active' LIMIT 150")) {
+    if (u.id === auth.id) continue;
+    notify(ctx.db, u.id, 'news', 'New Addis event', `${event.title} at ${event.venue || 'Addis Ababa'}.`, '#/events');
+  }
   const row = ctx.db.get('SELECT * FROM events WHERE id = ?', [created.lastInsertRowid]);
   return mapEvent(row);
 }
@@ -351,8 +355,18 @@ export async function updateSite(ctx) {
   };
   if (!validEmail(next.support_email)) throw AppError.bad('Support email must be a valid address.');
 
+  const prevAnnouncement = ctx.db.get("SELECT value FROM meta WHERE key = 'announcement'")?.value || '';
+  const prevEnabled = ctx.db.get("SELECT value FROM meta WHERE key = 'announcement_enabled'")?.value || '0';
+
   for (const [key, value] of Object.entries(next)) {
     ctx.db.run('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [key, value]);
+  }
+
+  if (next.announcement_enabled === '1' && next.announcement && (next.announcement !== prevAnnouncement || prevEnabled !== '1')) {
+    for (const u of ctx.db.all("SELECT id FROM users WHERE status = 'active' LIMIT 150")) {
+      if (u.id === auth.id) continue;
+      notify(ctx.db, u.id, 'news', 'News & Announcements', next.announcement, '#/welcome');
+    }
   }
   audit(ctx.db, auth.id, 'site.updated', `Website settings updated for ${next.site_name}`);
   return readSite(ctx.db);
@@ -400,6 +414,10 @@ export async function createTourAdmin(ctx) {
       tour.duration_min, tour.capacity, tour.price, tour.theme, tour.image_url, tour.status, nowIso()],
   );
   audit(ctx.db, auth.id, 'tours.created', `Tour #${created.lastInsertRowid} “${tour.title}” created by admin`);
+  for (const u of ctx.db.all("SELECT id FROM users WHERE status = 'active' LIMIT 150")) {
+    if (u.id === auth.id) continue;
+    notify(ctx.db, u.id, 'news', 'New tour announced', `${tour.title} is now open for bookings.`, `#/tour/${created.lastInsertRowid}`);
+  }
   const row = tourView(ctx.db, created.lastInsertRowid, auth.id);
   if (!row) throw AppError.internal('Could not create this tour.');
   return row;
@@ -443,7 +461,7 @@ export async function updateTourAdmin(ctx) {
 
   if (tour.status === 'cancelled') {
     for (const member of ctx.db.all('SELECT user_id FROM tour_members WHERE tour_id = ?', [ctx.params.id])) {
-      notify(ctx.db, member.user_id, 'tour', 'Tour cancelled', `${tour.title} has been cancelled by the AddisGo team.`);
+      notify(ctx.db, member.user_id, 'tour', 'Tour cancelled', `${tour.title} has been cancelled by the AddisGo team.`, `#/tour/${ctx.params.id}`);
     }
   }
   audit(ctx.db, auth.id, 'tours.updated', `Tour #${ctx.params.id} “${tour.title}” updated by admin`);

@@ -151,7 +151,7 @@ export async function create(ctx) {
   for (const driver of nearbyDrivers) {
     if (notified >= 15) break;
     if (haversineKm(pLat, pLng, driver.lat, driver.lng) <= 25) {
-      notify(ctx.db, driver.user_id, 'ride', 'New ride nearby', `${pickup} → ${dropoff} · ${priced.fare} ETB`);
+      notify(ctx.db, driver.user_id, 'ride', 'New ride nearby', `${pickup} → ${dropoff} · ${priced.fare} ETB`, '#/driver?tab=requests');
       notified += 1;
     }
   }
@@ -239,7 +239,7 @@ export async function accept(ctx) {
   } catch {
     /* keep fallback */
   }
-  notify(ctx.db, booking.customer.id, 'ride', 'Driver found', `${driverName} accepted your ride and is heading to ${booking.pickup}.`);
+  notify(ctx.db, booking.customer.id, 'ride', 'Driver found', `${driverName} accepted your ride and is heading to ${booking.pickup}.`, `#/ride/${booking.id}`);
   return booking;
 }
 
@@ -300,8 +300,8 @@ export async function autoMatch(ctx) {
     [bestDriver.id, nowIso(), booking.id],
   );
 
-  notify(ctx.db, booking.customer.id, 'ride', 'Driver found', `${bestDriver.name} accepted your ride and is heading to ${booking.pickup}.`);
-  notify(ctx.db, bestDriver.user_id, 'ride', 'Ride assigned', `You have been matched with ${booking.customer.name} at ${booking.pickup}.`);
+  notify(ctx.db, booking.customer.id, 'ride', 'Driver found', `${bestDriver.name} accepted your ride and is heading to ${booking.pickup}.`, `#/ride/${booking.id}`);
+  notify(ctx.db, bestDriver.user_id, 'ride', 'Ride assigned', `You have been matched with ${booking.customer.name} at ${booking.pickup}.`, `#/ride/${booking.id}`);
 
   return getBooking(ctx.db, booking.id) ?? throwInternal();
 }
@@ -354,12 +354,12 @@ export async function updateStatus(ctx) {
 
   const updated = getBooking(ctx.db, booking.id) ?? throwInternal();
   if (next === 'arriving') {
-    notify(ctx.db, updated.customer.id, 'ride', 'Your driver is arriving', 'Head to the pickup point — your driver is close.');
+    notify(ctx.db, updated.customer.id, 'ride', 'Your driver is arriving', 'Head to the pickup point — your driver is close.', `#/ride/${updated.id}`);
   } else if (next === 'in_progress') {
-    notify(ctx.db, updated.customer.id, 'ride', 'Trip started', 'Sit back and enjoy the ride. You can message your driver in the app.');
+    notify(ctx.db, updated.customer.id, 'ride', 'Trip started', 'Sit back and enjoy the ride. You can message your driver in the app.', `#/ride/${updated.id}`);
   } else if (next === 'completed') {
     const driverName = updated.driver ? updated.driver.name : 'your driver';
-    notify(ctx.db, updated.customer.id, 'ride', 'Trip complete', `How was your ride with ${driverName}? Tap to leave a rating.`);
+    notify(ctx.db, updated.customer.id, 'ride', 'Trip complete', `How was your ride with ${driverName}? Tap to leave a rating.`, `#/ride/${updated.id}`);
     const customerRow = ctx.db.get('SELECT email, name FROM users WHERE id = ?', [updated.customer.id]);
     if (customerRow && customerRow.email) {
       sendReceiptEmail(ctx.db, updated, customerRow, updated.driver).catch(() => {});
@@ -398,7 +398,7 @@ export async function cancel(ctx) {
   const reason = Array.from(String(ctx.body.reason ?? '').trim()).slice(0, 200).join('');
   const suffix = reason ? ` Reason: ${reason}` : '';
   if (updated.driver && isCustomer) {
-    notify(ctx.db, updated.driver.user_id, 'ride', 'Ride cancelled', `The rider cancelled ${updated.pickup}.${suffix}`);
+    notify(ctx.db, updated.driver.user_id, 'ride', 'Ride cancelled', `The rider cancelled ${updated.pickup}.${suffix}`, `#/ride/${updated.id}`);
   }
   if (isDriver) {
     notify(
@@ -407,6 +407,7 @@ export async function cancel(ctx) {
       'ride',
       'Driver cancelled',
       `Your driver cancelled this ride. Please request another driver.${suffix}`,
+      `#/ride/${updated.id}`,
     );
   }
   return updated;
@@ -443,7 +444,7 @@ export async function rate(ctx) {
 
   const updated = getBooking(ctx.db, booking.id) ?? throwInternal();
   if (updated.driver) {
-    notify(ctx.db, updated.driver.user_id, 'rating', 'New rating received', `${updated.customer.name} left you ${stars} stars.`);
+    notify(ctx.db, updated.driver.user_id, 'rating', 'New rating received', `${updated.customer.name} left you ${stars} stars.`, `#/ride/${updated.id}`);
   }
   return updated;
 }
@@ -515,6 +516,15 @@ export async function messagesPost(ctx) {
     "INSERT INTO messages (room_type, room_id, user_id, body, created_at) VALUES ('ride', ?, ?, ?, ?)",
     [booking.id, auth.id, body, nowIso()],
   );
+
+  const recipientId = (auth.id === booking.customer.id)
+    ? (booking.driver ? booking.driver.user_id : null)
+    : booking.customer.id;
+  if (recipientId) {
+    const senderName = auth.name || (auth.id === booking.customer.id ? 'rider' : 'driver');
+    const snippet = Array.from(body).slice(0, 100).join('');
+    notify(ctx.db, recipientId, 'chat', `New message from ${senderName}`, snippet, `#/ride/${booking.id}`);
+  }
   const message = ctx.db.get(
     `SELECT m.id AS id, m.body AS body, m.created_at AS created_at,
             u.id AS uid, u.name AS uname, u.role AS urole, u.bio AS ubio, u.languages AS ulanguages,

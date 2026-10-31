@@ -45,6 +45,7 @@ route('PATCH', '/profile', auth.updateProfile);
 route('POST', '/profile/password', auth.changePassword);
 route('GET', '/notifications', misc.notifications);
 route('POST', '/notifications/read', misc.markNotificationsRead);
+route('POST', '/notifications/:id/read', misc.markOneNotificationRead);
 route('POST', '/reports', misc.createReport);
 route('POST', '/newsletter/subscribe', misc.subscribeNewsletter);
 route('POST', '/upload', uploads.uploadMedia);

@@ -42,6 +42,15 @@ export async function markNotificationsRead(ctx) {
   return { ok: true };
 }
 
+export async function markOneNotificationRead(ctx) {
+  const auth = requireUser(ctx);
+  const id = Number(ctx.params.id);
+  if (id) {
+    ctx.db.run('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?', [id, auth.id]);
+  }
+  return { ok: true };
+}
+
 const TABLES = { message: 'messages', user: 'users', tour: 'tours', booking: 'bookings' };
 
 export async function createReport(ctx) {
@@ -81,7 +90,7 @@ export async function createReport(ctx) {
     [auth.id, targetType, targetId, reason, detail, nowIso()],
   );
   for (const admin of ctx.db.all("SELECT id FROM users WHERE role = 'admin' AND status = 'active'")) {
-    notify(ctx.db, admin.id, 'safety', 'New safety report', `A ${targetType} was reported: ${reason}`);
+    notify(ctx.db, admin.id, 'safety', 'New safety report', `A ${targetType} was reported: ${reason}`, '#/admin?tab=reports');
   }
   audit(ctx.db, auth.id, 'safety.report_created', `${targetType} #${targetId} — ${reason}`);
   return { ok: true, message: 'Thanks — our safety team will review this.' };

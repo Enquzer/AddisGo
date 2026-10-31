@@ -240,6 +240,7 @@ export async function updateDriver(ctx) {
         'driver',
         "You're approved to drive",
         'Welcome to AddisGo. Go online in the driver dashboard to start receiving nearby requests.',
+        '#/driver',
       );
     } else if (nextStatus === 'suspended') {
       notify(
@@ -248,6 +249,7 @@ export async function updateDriver(ctx) {
         'driver',
         'Driver account suspended',
         'Your driver access has been paused. Contact support@addisgo.et for a review.',
+        '#/profile',
       );
     }
     audit(ctx.db, auth.id, 'driver.status_changed', `Driver #${ctx.params.id} (${found.name}) set to ${nextStatus}`);
@@ -286,6 +288,7 @@ export async function deleteDriver(ctx) {
       'driver',
       'Driver profile removed',
       'Your driver profile was removed by the AddisGo team. Your rider account is still active.',
+      '#/profile',
     );
   });
   audit(ctx.db, auth.id, 'driver.deleted', `Driver #${found.id} (${found.name}) removed`);
@@ -360,6 +363,7 @@ export async function createUser(ctx) {
     role === 'driver'
       ? 'Your driver application is in review. We will let you know as soon as it is approved.'
       : 'Your account is ready. Book your first electric ride or join a city tour.',
+    role === 'driver' ? '#/driver' : '#/',
   );
   audit(ctx.db, auth.id, 'user.created', `User #${userId} (${name}) created as ${role}`);
   return mapAdminUser(ctx.db.get(`${ADMIN_USER_SELECT} WHERE u.id = ?`, [userId]));
@@ -407,6 +411,7 @@ export async function updateUser(ctx) {
       next.status === 'suspended'
         ? 'Your AddisGo account has been suspended. Contact support@addisgo.et to appeal.'
         : 'Your AddisGo account is active again. Welcome back.',
+      '#/profile',
     );
     audit(ctx.db, auth.id, 'user.status_changed', `User #${found.id} (${found.name}) set to ${next.status}`);
   }
@@ -522,9 +527,9 @@ export async function updateBooking(ctx) {
 
   if (next.status === 'completed' && booking.status !== 'completed' && booking.driver) {
     ctx.db.run('UPDATE drivers SET trips = trips + 1 WHERE id = ?', [booking.driver.id]);
-    notify(ctx.db, booking.customer.id, 'ride', 'Trip complete', 'Thanks for riding with AddisGo. Tap the trip to leave a rating.');
+    notify(ctx.db, booking.customer.id, 'ride', 'Trip complete', 'Thanks for riding with AddisGo. Tap the trip to leave a rating.', `#/ride/${booking.id}`);
   } else if (next.status === 'cancelled' && booking.status !== 'cancelled') {
-    notify(ctx.db, booking.customer.id, 'ride', 'Ride cancelled', 'An AddisGo operator cancelled this ride. Any charge is released.');
+    notify(ctx.db, booking.customer.id, 'ride', 'Ride cancelled', 'An AddisGo operator cancelled this ride. Any charge is released.', `#/ride/${booking.id}`);
   }
 
   audit(
@@ -610,6 +615,7 @@ export async function resolveReport(ctx) {
     'safety',
     'Safety report reviewed',
     'Thanks for helping keep AddisGo safe. Our team has reviewed your report.',
+    '#/profile',
   );
   audit(ctx.db, auth.id, 'safety.report_reviewed', `Report #${ctx.params.id} marked ${status}`);
   return { ok: true };

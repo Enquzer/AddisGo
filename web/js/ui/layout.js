@@ -252,6 +252,28 @@ function mountAccountMenus() {
   };
 }
 
+function notifIcon(kind) {
+  if (kind === 'chat') return icon('message', 17);
+  if (kind === 'ride') return icon('car', 17);
+  if (kind === 'tour') return icon('compass', 17);
+  if (kind === 'safety') return icon('shield', 17);
+  if (kind === 'driver') return icon('car', 17);
+  if (kind === 'rating') return icon('star', 17);
+  if (kind === 'account') return icon('user', 17);
+  if (kind === 'news') return icon('info', 17);
+  return icon('bell', 17);
+}
+
+function notifLink(n) {
+  if (n.link) return n.link;
+  if (n.kind === 'ride' || n.kind === 'rating') return '#/trips';
+  if (n.kind === 'driver') return '#/driver';
+  if (n.kind === 'tour') return '#/tours';
+  if (n.kind === 'news') return '#/welcome';
+  if (n.kind === 'safety' || n.kind === 'account') return '#/profile';
+  return '#/';
+}
+
 let notificationsPoller = null;
 
 function mountNotifications() {
@@ -274,16 +296,20 @@ function mountNotifications() {
         <button type="button" class="btn btn-ghost btn-xs" id="mark-read" ${unread ? '' : 'disabled'}>Mark all read</button>
       </div>
       <div class="notify-list">
-        ${items.length ? items.map((n) => `
-          <div class="notify-item ${n.is_read ? '' : 'is-unread'}">
-            <span class="notify-icon icon-${esc(n.kind)}">${icon(n.kind === 'safety' ? 'shield' : n.kind === 'tour' ? 'compass' : n.kind === 'driver' ? 'car' : n.kind === 'rating' ? 'star' : n.kind === 'account' ? 'user' : 'bell', 17)}</span>
+        ${items.length ? items.map((n) => {
+          const targetUrl = notifLink(n);
+          return `
+          <a href="${esc(targetUrl)}" class="notify-item ${n.is_read ? '' : 'is-unread'}" data-id="${n.id}">
+            <span class="notify-icon icon-${esc(n.kind)}">${notifIcon(n.kind)}</span>
             <div class="notify-copy">
               <strong>${esc(n.title)}</strong>
               <p>${esc(n.body)}</p>
               <small>${esc(relativeShort(n.created_at))}</small>
             </div>
-          </div>
-        `).join('') : `<p class="panel-empty">${icon('bell', 22)} Nothing yet — book a ride or join a tour to get updates.</p>`}
+            <span class="notify-action">${icon('chevron-right', 14)}</span>
+          </a>
+        `;
+        }).join('') : `<p class="panel-empty">${icon('bell', 22)} Nothing yet — book a ride or join a tour to get updates.</p>`}
       </div>
     `;
     panel.querySelector('#mark-read')?.addEventListener('click', async () => {
@@ -295,6 +321,28 @@ function mountNotifications() {
       } catch (error) {
         toastError(error);
       }
+    });
+
+    panel.querySelectorAll('.notify-item').forEach((el) => {
+      el.addEventListener('click', async () => {
+        const id = el.dataset.id;
+        panel.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+        if (id) {
+          try {
+            await api('/notifications/' + id + '/read', { method: 'POST' });
+            items = items.map((it) => it.id === Number(id) ? { ...it, is_read: true } : it);
+            unread = items.filter((it) => !it.is_read).length;
+            const dot = $('#notify-dot');
+            if (dot) {
+              dot.hidden = unread === 0;
+              dot.textContent = unread > 9 ? '9+' : String(unread || '');
+            }
+          } catch {
+            /* silent */
+          }
+        }
+      });
     });
   };
 

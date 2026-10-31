@@ -17,6 +17,7 @@ export function openDatabase(file) {
   db.exec('PRAGMA journal_mode = WAL;');
   try { db.exec('ALTER TABLE tours ADD COLUMN image_url TEXT NOT NULL DEFAULT ""'); } catch {}
   try { db.exec('ALTER TABLE events ADD COLUMN image_url TEXT NOT NULL DEFAULT ""'); } catch {}
+  try { db.exec('ALTER TABLE notifications ADD COLUMN link TEXT NOT NULL DEFAULT ""'); } catch {}
   const wrapped = new Db(db);
   ensureCmsDefaults(wrapped);
   return wrapped;
@@ -415,17 +416,17 @@ export function getSelfUser(db, userId) {
   return user;
 }
 
-export function notify(db, userId, kind, title, body) {
+export function notify(db, userId, kind, title, body, link = '') {
   db.run(
-    'INSERT INTO notifications (user_id, kind, title, body, created_at) VALUES (?, ?, ?, ?, ?)',
-    [userId, kind, title, body, nowIso()],
+    'INSERT INTO notifications (user_id, kind, title, body, link, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [userId, kind, title, body, link || '', nowIso()],
   );
 }
 
 export function notifications(db, userId) {
   return db
     .all(
-      `SELECT id, kind, title, body, is_read, created_at FROM notifications
+      `SELECT id, kind, title, body, link, is_read, created_at FROM notifications
        WHERE user_id = ? ORDER BY id DESC LIMIT 50`,
       [userId],
     )
@@ -434,6 +435,7 @@ export function notifications(db, userId) {
       kind: row.kind,
       title: row.title,
       body: row.body ?? '',
+      link: row.link ?? '',
       is_read: Boolean(row.is_read),
       created_at: row.created_at,
     }));

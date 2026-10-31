@@ -155,7 +155,7 @@ export async function join(ctx) {
   );
   if (inserted.changes > 0) {
     const name = userName(ctx.db, auth.id);
-    notify(ctx.db, tour.host.id, 'tour', 'New tour member', `${name} joined ${tour.title}.`);
+    notify(ctx.db, tour.host.id, 'tour', 'New tour member', `${name} joined ${tour.title}.`, `#/tour/${tour.id}`);
     const memberRow = ctx.db.get('SELECT email, name FROM users WHERE id = ?', [auth.id]);
     if (memberRow && memberRow.email) {
       sendTourConfirmationEmail(ctx.db, tour, memberRow).catch(() => {});
@@ -204,6 +204,7 @@ export async function cancel(ctx) {
       'tour',
       'Tour cancelled',
       `${tour.title} was cancelled. Any planned ride is unaffected.`,
+      `#/tour/${tour.id}`,
     );
   }
   const updated = tourView(ctx.db, tour.id, auth.id);
@@ -239,9 +240,15 @@ export async function messagesPost(ctx) {
     "INSERT INTO messages (room_type, room_id, user_id, body, created_at) VALUES ('tour', ?, ?, ?, ?)",
     [tour.id, auth.id, body, nowIso()],
   );
-  if (tour.host.id !== auth.id) {
-    const name = userName(ctx.db, auth.id);
-    notify(ctx.db, tour.host.id, 'tour', 'New message in your tour', `${name}: ${Array.from(body).slice(0, 120).join('')}`);
+  const senderName = userName(ctx.db, auth.id);
+  const snippet = Array.from(body).slice(0, 100).join('');
+  const recipientIds = new Set();
+  if (tour.host.id !== auth.id) recipientIds.add(tour.host.id);
+  for (const m of (tour.members || [])) {
+    if (m.id !== auth.id) recipientIds.add(m.id);
+  }
+  for (const rid of recipientIds) {
+    notify(ctx.db, rid, 'chat', `New message in ${tour.title}`, `${senderName}: ${snippet}`, `#/tour/${tour.id}`);
   }
   const user = publicUser(ctx.db, auth.id);
   if (!user) throw AppError.notFound('Account not found.');
