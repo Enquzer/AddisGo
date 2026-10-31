@@ -11,7 +11,7 @@ import {
   validCoords,
 } from '../lib/util.js';
 
-const CLASS_KEYS = ['e2', 'comfort', 'van', 'bajaj'];
+const CLASS_KEYS = ['e2', 'comfort', 'van'];
 
 export async function nearby(ctx) {
   requireUser(ctx);

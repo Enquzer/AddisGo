@@ -35,7 +35,7 @@ const TOUR_FILTERS = ['all', 'upcoming', 'completed', 'cancelled'];
 const EVENT_FILTERS = ['all', 'published', 'draft', 'cancelled'];
 const ROUTE_FILTERS = ['all', 'active', 'inactive'];
 const BOOKING_STATUSES = ['requested', 'accepted', 'arriving', 'in_progress', 'completed', 'cancelled'];
-const VEHICLE_CLASSES = ['e2', 'comfort', 'van', 'bajaj'];
+const VEHICLE_CLASSES = ['e2', 'comfort', 'van'];
 const EVENT_CATEGORIES = ['culture', 'music', 'food', 'sport', 'community', 'art', 'other'];
 const TOUR_THEMES = ['entoto', 'merkato', 'museum', 'bole', 'custom'];
 const TOUR_STATUSES = ['upcoming', 'completed', 'cancelled'];
@@ -127,7 +127,116 @@ function selectField({ label, name, value, options, hint = '', wide = false }) {
   </label>`;
 }
 
-function openFormModal({ title, eyebrow = '', size = 'lg', body, submitLabel = 'Save changes', onSubmit }) {
+function photoAttachField({ label = 'Photo attachment', name = 'image_url', value = '', hint = 'Upload a photo or paste an image URL.' }) {
+  return `<div class="field field-wide photo-attach-field">
+    <span class="field-label">${esc(label)}</span>
+    <div class="photo-attach-row">
+      <div class="photo-preview-box" data-preview-box>
+        ${value ? `<img src="${esc(value)}" alt="Preview" class="photo-preview-img" /><button type="button" class="photo-remove-btn" data-remove-photo title="Remove photo" aria-label="Remove photo">✕</button>` : `<span class="photo-placeholder">${icon('image', 22)}<span>No photo</span></span>`}
+      </div>
+      <div class="photo-inputs">
+        <div class="photo-btn-group">
+          <label class="btn btn-sm btn-outline photo-upload-btn">
+            ${icon('upload', 14)} Attach photo
+            <input type="file" accept="image/jpeg,image/png,image/webp" data-photo-file style="display:none;" />
+          </label>
+          <span class="field-hint" style="margin:0;">${esc(hint)}</span>
+        </div>
+        <input type="url" name="${name}" value="${esc(value)}" placeholder="Or paste image URL (https://...)" class="field-input photo-url-input" data-photo-url />
+      </div>
+    </div>
+  </div>`;
+}
+
+function readFileAsOptimizedDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Invalid image file.'));
+      img.onload = () => {
+        const maxDim = 1200;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function setupPhotoAttachment(form, initialUrl = '') {
+  const fileInput = form.querySelector('[data-photo-file]');
+  const urlInput = form.querySelector('[data-photo-url]');
+  const previewBox = form.querySelector('[data-preview-box]');
+  if (!urlInput || !previewBox) return;
+
+  const updatePreview = (url) => {
+    const clean = String(url || '').trim();
+    if (clean) {
+      previewBox.innerHTML = `
+        <img src="${esc(clean)}" alt="Preview" class="photo-preview-img" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'40\\' height=\\'40\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'%23888\\' stroke-width=\\'2\\'><rect width=\\'18\\' height=\\'18\\' x=\\'3\\' y=\\'3\\' rx=\\'2\\'/></svg>';" />
+        <button type="button" class="photo-remove-btn" data-remove-photo title="Remove photo" aria-label="Remove photo">✕</button>
+      `;
+      previewBox.querySelector('[data-remove-photo]')?.addEventListener('click', () => {
+        urlInput.value = '';
+        if (fileInput) fileInput.value = '';
+        updatePreview('');
+      });
+    } else {
+      previewBox.innerHTML = `<span class="photo-placeholder">${icon('image', 22)}<span>No photo</span></span>`;
+    }
+  };
+
+  updatePreview(initialUrl);
+
+  urlInput.addEventListener('input', () => {
+    updatePreview(urlInput.value.trim());
+  });
+
+  if (fileInput) {
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        toast('Please choose a valid image file (JPEG, PNG, WebP).', { type: 'error' });
+        return;
+      }
+      previewBox.innerHTML = `<span class="photo-placeholder">${icon('loader', 20)}<span>Uploading...</span></span>`;
+      try {
+        const dataUrl = await readFileAsOptimizedDataUrl(file);
+        const res = await api('/upload', { method: 'POST', body: { data: dataUrl } });
+        if (res && res.url) {
+          urlInput.value = res.url;
+          updatePreview(res.url);
+          toast('Photo attached successfully.');
+        } else {
+          throw new Error('Upload response missing url');
+        }
+      } catch (err) {
+        toast('Could not upload photo: ' + (err.message || 'Error'), { type: 'error' });
+        updatePreview(urlInput.value.trim());
+      }
+    });
+  }
+}
+
+function openFormModal({ title, eyebrow = '', size = 'lg', body, submitLabel = 'Save changes', onInit, onSubmit }) {
   return new Promise((resolve) => {
     const formId = `admin-form-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     let settled = false;
@@ -156,6 +265,14 @@ function openFormModal({ title, eyebrow = '', size = 'lg', body, submitLabel = '
     const form = modal.body.querySelector('[data-admin-form]');
     const errorBox = modal.body.querySelector('[data-form-error]');
     const save = modal.footer.querySelector('[data-act="save"]');
+
+    if (onInit) {
+      try {
+        onInit(form, modal);
+      } catch (err) {
+        console.error('Modal onInit error:', err);
+      }
+    }
 
     modal.footer.querySelector('[data-act="cancel"]').addEventListener('click', () => {
       settled = true;
@@ -610,7 +727,7 @@ export default async function renderAdmin(view, ctx) {
       ${tableBlock(
         '<th>Tour</th><th>Host</th><th>When</th><th>Group</th><th class="num">Price</th><th>Status</th><th class="actions-col">Actions</th>',
         rows.map((tour) => `<tr>
-          <td><div class="table-person"><span class="table-flag theme-${esc(tour.theme || 'custom')}">${icon('compass', 16)}</span><span><strong>${esc(tour.title)}</strong><small>${esc(tour.meeting_point)}</small><small>${esc(tour.description.slice(0, 70))}${tour.description.length > 70 ? '…' : ''}</small></span></div></td>
+          <td><div class="table-person">${tour.image_url ? `<img src="${esc(tour.image_url)}" class="table-thumb" alt="" />` : `<span class="table-flag theme-${esc(tour.theme || 'custom')}">${icon('compass', 16)}</span>`}<span><strong>${esc(tour.title)}</strong><small>${esc(tour.meeting_point)}</small><small>${esc(tour.description.slice(0, 70))}${tour.description.length > 70 ? '…' : ''}</small></span></div></td>
           <td><div class="table-person">${avatar(tour.host, 30)}<span><strong>${esc(tour.host.name)}</strong><small>${esc(roleLabel(tour.host.role))}</small></span></div></td>
           <td class="nowrap"><strong>${esc(date(tour.starts_at))}</strong><small class="block-note">${esc(dateTime(tour.starts_at).split('·')[1] || '')} · ${esc(minutes(tour.duration_min))}</small></td>
           <td class="nowrap">${tour.member_count} / ${tour.capacity}<small class="block-note">${tour.spots_left} spot${tour.spots_left === 1 ? '' : 's'} left</small></td>
@@ -670,7 +787,7 @@ export default async function renderAdmin(view, ctx) {
       ${tableBlock(
         '<th>Event</th><th>Venue</th><th>When</th><th>Category</th><th class="num">Ticket</th><th>Status</th><th class="actions-col">Actions</th>',
         rows.map((event) => `<tr>
-          <td><div class="table-person"><span class="table-flag category-${esc(event.category)}">${icon('calendar', 16)}</span><span><strong>${esc(event.title)}</strong><small>${esc(event.description.slice(0, 80))}${event.description.length > 80 ? '…' : ''}</small></span></div></td>
+          <td><div class="table-person">${event.image_url ? `<img src="${esc(event.image_url)}" class="table-thumb" alt="" />` : `<span class="table-flag category-${esc(event.category)}">${icon('calendar', 16)}</span>`}<span><strong>${esc(event.title)}</strong><small>${esc(event.description.slice(0, 80))}${event.description.length > 80 ? '…' : ''}</small></span></div></td>
           <td class="cell-route">${esc(event.venue || 'Venue to be confirmed')}</td>
           <td class="nowrap"><strong>${esc(date(event.starts_at))}</strong><small class="block-note">${esc(dateTime(event.starts_at).split('·')[1] || '')}</small></td>
           <td>${pill(titleCase(event.category), 'soft')}</td>
@@ -1339,6 +1456,7 @@ export default async function renderAdmin(view, ctx) {
     const editing = Boolean(tour);
     const body = `<div class="field-grid">
       ${inputField({ label: 'Tour title', name: 'title', value: tour?.title || '', required: true, max: 80, wide: true })}
+      ${photoAttachField({ label: 'Tour photo', value: tour?.image_url || '', hint: 'Attach a tour photo or cover image.' })}
       ${textareaField({ label: 'Description', name: 'description', value: tour?.description || '', rows: 4, maxLength: 1200, required: true, hint: 'At least 20 characters. Describe the route and what is included.' })}
       ${inputField({ label: 'Meeting point', name: 'meeting_point', value: tour?.meeting_point || '', required: true, max: 140, wide: true })}
       ${inputField({ label: 'Latitude', name: 'lat', value: String(tour?.lat ?? ADDIS.lat), type: 'number', step: '0.0001', required: true })}
@@ -1358,10 +1476,12 @@ export default async function renderAdmin(view, ctx) {
       size: 'lg',
       body,
       submitLabel: editing ? 'Save tour' : 'Create tour',
+      onInit: (form) => setupPhotoAttachment(form, tour?.image_url || ''),
       onSubmit: async (formData) => {
         const raw = formObject(formData);
         const payload = {
           title: raw.title,
+          image_url: raw.image_url || '',
           description: raw.description,
           meeting_point: raw.meeting_point,
           lat: Number(raw.lat),
@@ -1390,6 +1510,7 @@ export default async function renderAdmin(view, ctx) {
     const editing = Boolean(event);
     const body = `<div class="field-grid">
       ${inputField({ label: 'Event title', name: 'title', value: event?.title || '', required: true, max: 120, wide: true })}
+      ${photoAttachField({ label: 'Event photo', value: event?.image_url || '', hint: 'Attach an event photo or poster.' })}
       ${textareaField({ label: 'Description', name: 'description', value: event?.description || '', rows: 4, maxLength: 1200 })}
       ${inputField({ label: 'Venue', name: 'venue', value: event?.venue || '', max: 160, wide: true })}
       ${inputField({ label: 'Latitude', name: 'lat', value: event?.lat == null ? '' : String(event.lat), type: 'number', step: '0.0001', placeholder: 'Optional' })}
@@ -1407,10 +1528,12 @@ export default async function renderAdmin(view, ctx) {
       size: 'lg',
       body,
       submitLabel: editing ? 'Save event' : 'Publish event',
+      onInit: (form) => setupPhotoAttachment(form, event?.image_url || ''),
       onSubmit: async (formData) => {
         const raw = formObject(formData);
         const payload = {
           title: raw.title,
+          image_url: raw.image_url || '',
           description: raw.description,
           venue: raw.venue,
           starts_at: localToIso(raw.starts_at, 'Start time'),

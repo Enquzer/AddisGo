@@ -39,7 +39,7 @@ function mapAdminDriver(row) {
 
 const DRIVER_STATUSES = ['pending', 'approved', 'suspended'];
 const BOOKING_STATUSES = ['requested', 'accepted', 'arriving', 'in_progress', 'completed', 'cancelled'];
-const VEHICLE_CLASSES = ['e2', 'comfort', 'van', 'bajaj'];
+const VEHICLE_CLASSES = ['e2', 'comfort', 'van'];
 
 const ADMIN_USER_SELECT = `SELECT u.id, u.name, u.email, u.phone, u.role, u.status, u.is_verified,
     u.avatar_color, u.bio, u.created_at,

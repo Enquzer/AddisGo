@@ -4,7 +4,6 @@ export const CLASSES = [
   { key: 'e2', label: 'Electric E2', base: 70, perKm: 20, perMin: 2.5, minimum: 90, seats: 4 },
   { key: 'comfort', label: 'Comfort', base: 105, perKm: 28, perMin: 3, minimum: 140, seats: 4 },
   { key: 'van', label: 'Tour Van', base: 180, perKm: 38, perMin: 4, minimum: 250, seats: 7 },
-  { key: 'bajaj', label: 'Bajaj', base: 40, perKm: 14, perMin: 1.2, minimum: 60, seats: 3 },
 ];
 
 export const CLASS_KEYS = CLASSES.map((c) => c.key);

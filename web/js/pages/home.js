@@ -43,7 +43,7 @@ export default async function renderHome(view, ctx) {
             <a class="quick-card tone-green" href="#/ride">
               <span class="quick-icon">${icon('car', 22)}</span>
               <strong>Book a ride</strong>
-              <small>Electric E2, comfort, van or bajaj</small>
+              <small>Electric E2, comfort or van</small>
               ${icon('arrow-up-right', 16, 'quick-arrow')}
             </a>
             <a class="quick-card tone-amber" href="#/tours">

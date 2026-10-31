@@ -7,7 +7,7 @@ import { charLen, nowIso, validCoords, validEmail } from '../lib/util.js';
 const EVENT_CATEGORIES = ['culture', 'music', 'food', 'sport', 'community', 'art', 'other'];
 const EVENT_STATUSES = ['draft', 'published', 'cancelled'];
 const ROUTE_STATUSES = ['active', 'inactive'];
-const VEHICLE_CLASSES = ['e2', 'comfort', 'van', 'bajaj'];
+const VEHICLE_CLASSES = ['e2', 'comfort', 'van'];
 const THEMES = ['entoto', 'merkato', 'museum', 'bole', 'custom'];
 const TOUR_STATUSES = ['upcoming', 'cancelled', 'completed'];
 const SITE_KEYS = [
@@ -138,6 +138,7 @@ function mapEvent(row) {
     ends_at: row.ends_at,
     category: row.category,
     price: Number(row.price ?? 0),
+    image_url: row.image_url ?? '',
     status: row.status,
     created_at: row.created_at,
   };
@@ -159,6 +160,7 @@ function readEvent(body) {
     ends_at: endsAt,
     category: oneOf(body.category, 'category', EVENT_CATEGORIES, 'culture'),
     price,
+    image_url: String(body.image_url ?? '').trim().slice(0, 500),
     status: oneOf(body.status, 'status', EVENT_STATUSES, 'published'),
   };
 }
@@ -179,10 +181,10 @@ export async function createEvent(ctx) {
   const auth = requireAdmin(ctx);
   const event = readEvent(ctx.body);
   const created = ctx.db.run(
-    `INSERT INTO events (title, description, venue, lat, lng, starts_at, ends_at, category, price, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (title, description, venue, lat, lng, starts_at, ends_at, category, price, image_url, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [event.title, event.description, event.venue, event.lat, event.lng, event.starts_at, event.ends_at,
-      event.category, event.price, event.status, nowIso()],
+      event.category, event.price, event.image_url, event.status, nowIso()],
   );
   audit(ctx.db, auth.id, 'events.created', `Event #${created.lastInsertRowid} “${event.title}” created`);
   const row = ctx.db.get('SELECT * FROM events WHERE id = ?', [created.lastInsertRowid]);
@@ -196,9 +198,9 @@ export async function updateEvent(ctx) {
   const event = readEvent({ ...mapEvent(found), ...ctx.body });
   ctx.db.run(
     `UPDATE events SET title = ?, description = ?, venue = ?, lat = ?, lng = ?, starts_at = ?, ends_at = ?,
-        category = ?, price = ?, status = ? WHERE id = ?`,
+        category = ?, price = ?, image_url = ?, status = ? WHERE id = ?`,
     [event.title, event.description, event.venue, event.lat, event.lng, event.starts_at, event.ends_at,
-      event.category, event.price, event.status, ctx.params.id],
+      event.category, event.price, event.image_url, event.status, ctx.params.id],
   );
   audit(ctx.db, auth.id, 'events.updated', `Event #${ctx.params.id} “${event.title}” updated`);
   const row = ctx.db.get('SELECT * FROM events WHERE id = ?', [ctx.params.id]);
@@ -374,6 +376,7 @@ function readTour(body) {
     capacity: integer(body.capacity, 'Group size', 2, 30),
     price: integer(body.price ?? 0, 'Price', 0, 100000),
     theme,
+    image_url: String(body.image_url ?? '').trim().slice(0, 500),
     status: oneOf(body.status, 'status', TOUR_STATUSES, 'upcoming'),
     host_id: body.host_id === undefined || body.host_id === '' ? null : Number(body.host_id),
   };
@@ -391,10 +394,10 @@ export async function createTourAdmin(ctx) {
 
   const created = ctx.db.run(
     `INSERT INTO tours (host_id, title, description, meeting_point, lat, lng, starts_at, duration_min,
-        capacity, price, theme, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        capacity, price, theme, image_url, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [hostId, tour.title, tour.description, tour.meeting_point, tour.lat, tour.lng, tour.starts_at,
-      tour.duration_min, tour.capacity, tour.price, tour.theme, tour.status, nowIso()],
+      tour.duration_min, tour.capacity, tour.price, tour.theme, tour.image_url, tour.status, nowIso()],
   );
   audit(ctx.db, auth.id, 'tours.created', `Tour #${created.lastInsertRowid} “${tour.title}” created by admin`);
   const row = tourView(ctx.db, created.lastInsertRowid, auth.id);
@@ -417,6 +420,7 @@ export async function updateTourAdmin(ctx) {
     capacity: found.capacity,
     price: found.price,
     theme: found.theme,
+    image_url: found.image_url,
     status: found.status,
     host_id: found.host_id,
     ...ctx.body,
@@ -431,10 +435,10 @@ export async function updateTourAdmin(ctx) {
 
   ctx.db.run(
     `UPDATE tours SET title = ?, description = ?, meeting_point = ?, lat = ?, lng = ?, starts_at = ?,
-        duration_min = ?, capacity = ?, price = ?, theme = ?, status = ?,
+        duration_min = ?, capacity = ?, price = ?, theme = ?, image_url = ?, status = ?,
         host_id = COALESCE(?, host_id) WHERE id = ?`,
     [tour.title, tour.description, tour.meeting_point, tour.lat, tour.lng, tour.starts_at,
-      tour.duration_min, tour.capacity, tour.price, tour.theme, tour.status, hostId, ctx.params.id],
+      tour.duration_min, tour.capacity, tour.price, tour.theme, tour.image_url, tour.status, hostId, ctx.params.id],
   );
 
   if (tour.status === 'cancelled') {

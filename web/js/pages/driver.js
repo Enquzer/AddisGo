@@ -25,7 +25,6 @@ const CLASS_KEYS = [
   { key: 'e2', label: 'Electric E2', hint: 'Quiet zero-tailpipe city car · 4 seats' },
   { key: 'comfort', label: 'Comfort', hint: 'Extra room and a smoother ride · 4 seats' },
   { key: 'van', label: 'Tour Van', hint: 'Groups and luggage · 7 seats' },
-  { key: 'bajaj', label: 'Bajaj', hint: 'Quick neighbourhood hops · 3 seats' },
 ];
 
 export default async function renderDriver(view, ctx) {

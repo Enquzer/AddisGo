@@ -231,6 +231,24 @@ function openHostModal(ctx, onCreated) {
           <span class="field-label">Tour title</span>
           <input class="field-input" name="title" maxlength="80" placeholder="Sunset over Entoto" required />
         </label>
+        <div class="field field-wide photo-attach-field">
+          <span class="field-label">Tour photo</span>
+          <div class="photo-attach-row">
+            <div class="photo-preview-box" id="host-photo-preview">
+              <span class="photo-placeholder">${icon('image', 22)}<span>No photo</span></span>
+            </div>
+            <div class="photo-inputs">
+              <div class="photo-btn-group">
+                <label class="btn btn-sm btn-outline photo-upload-btn">
+                  ${icon('upload', 14)} Attach photo
+                  <input type="file" accept="image/jpeg,image/png,image/webp" id="host-photo-file" style="display:none;" />
+                </label>
+                <span class="field-hint" style="margin:0;">JPEG, PNG or WebP</span>
+              </div>
+              <input type="url" name="image_url" id="host-photo-url" placeholder="Or paste photo URL (https://...)" class="field-input photo-url-input" />
+            </div>
+          </div>
+        </div>
         <label class="field">
           <span class="field-label">What will the group do?</span>
           <textarea class="field-input" name="description" rows="4" maxlength="1200" placeholder="Where you meet, what you will see, what to bring…" required></textarea>
@@ -307,6 +325,80 @@ function openHostModal(ctx, onCreated) {
   });
   setPoint(point.lat, point.lng, 'Bole Medhanialem');
 
+  const photoFileInput = modal.body.querySelector('#host-photo-file');
+  const photoUrlInput = modal.body.querySelector('#host-photo-url');
+  const photoPreview = modal.body.querySelector('#host-photo-preview');
+
+  const updatePhotoPreview = (url) => {
+    const clean = String(url || '').trim();
+    if (clean) {
+      photoPreview.innerHTML = `
+        <img src="${esc(clean)}" alt="Preview" class="photo-preview-img" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'40\\' height=\\'40\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'%23888\\' stroke-width=\\'2\\'><rect width=\\'18\\' height=\\'18\\' x=\\'3\\' y=\\'3\\' rx=\\'2\\'/></svg>';" />
+        <button type="button" class="photo-remove-btn" id="host-photo-remove" title="Remove photo" aria-label="Remove photo">✕</button>
+      `;
+      photoPreview.querySelector('#host-photo-remove')?.addEventListener('click', () => {
+        photoUrlInput.value = '';
+        if (photoFileInput) photoFileInput.value = '';
+        updatePhotoPreview('');
+      });
+    } else {
+      photoPreview.innerHTML = `<span class="photo-placeholder">${icon('image', 22)}<span>No photo</span></span>`;
+    }
+  };
+
+  photoUrlInput?.addEventListener('input', () => updatePhotoPreview(photoUrlInput.value.trim()));
+
+  photoFileInput?.addEventListener('change', async () => {
+    const file = photoFileInput.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast('Please choose a valid image file (JPEG, PNG, WebP).', { type: 'error' });
+      return;
+    }
+    photoPreview.innerHTML = `<span class="photo-placeholder">${icon('loader', 20)}<span>Uploading...</span></span>`;
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Failed to read file.'));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('Invalid image file.'));
+          img.onload = () => {
+            const maxDim = 1200;
+            let { width, height } = img;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.82));
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+      const res = await api('/upload', { method: 'POST', body: { data: dataUrl } });
+      if (res && res.url) {
+        photoUrlInput.value = res.url;
+        updatePhotoPreview(res.url);
+        toast('Photo attached successfully.');
+      } else {
+        throw new Error('Upload response missing url');
+      }
+    } catch (err) {
+      toast('Could not upload photo: ' + (err.message || 'Error'), { type: 'error' });
+      updatePhotoPreview(photoUrlInput.value.trim());
+    }
+  });
+
   placeSelect.addEventListener('change', () => {
     const place = placeByName(placeSelect.value);
     if (!place) return;
@@ -348,6 +440,7 @@ function openHostModal(ctx, onCreated) {
             capacity: Number(values.capacity),
             price: Number(values.price),
             theme: values.theme,
+            image_url: values.image_url || '',
           },
         });
         modal.close();

@@ -15,6 +15,8 @@ export function openDatabase(file) {
   db.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL;');
   db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
   db.exec('PRAGMA journal_mode = WAL;');
+  try { db.exec('ALTER TABLE tours ADD COLUMN image_url TEXT NOT NULL DEFAULT ""'); } catch {}
+  try { db.exec('ALTER TABLE events ADD COLUMN image_url TEXT NOT NULL DEFAULT ""'); } catch {}
   const wrapped = new Db(db);
   ensureCmsDefaults(wrapped);
   return wrapped;
@@ -288,6 +290,7 @@ export const TOUR_SELECT = `SELECT
   t.id AS id, t.title AS title, t.description AS description, t.meeting_point AS meeting_point,
   t.lat AS lat, t.lng AS lng, t.starts_at AS starts_at, t.duration_min AS duration_min,
   t.capacity AS capacity, t.price AS price, t.theme AS theme, t.status AS status,
+  COALESCE(t.image_url, '') AS image_url,
   t.created_at AS created_at,
   u.id AS host_id, u.name AS host_name, u.role AS host_role, u.bio AS host_bio,
   u.languages AS host_languages, u.avatar_color AS host_avatar, u.is_verified AS host_verified
@@ -316,6 +319,7 @@ export function tourView(db, tourId, viewerId = null) {
     capacity,
     price: row.price,
     theme: row.theme,
+    image_url: row.image_url ?? '',
     status: row.status,
     created_at: row.created_at,
     host,

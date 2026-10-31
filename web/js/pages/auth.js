@@ -69,7 +69,6 @@ export default async function renderAuth(view, ctx) {
                         <option value="e2">Electric E2</option>
                         <option value="comfort">Comfort</option>
                         <option value="van">Tour Van</option>
-                        <option value="bajaj">Bajaj</option>
                       </select>
                     </label>
                     <label class="field">

@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS tours (
     capacity      INTEGER NOT NULL,
     price         INTEGER NOT NULL,
     theme         TEXT NOT NULL DEFAULT 'entoto',
+    image_url     TEXT NOT NULL DEFAULT '',
     status        TEXT NOT NULL DEFAULT 'upcoming'
                   CHECK (status IN ('upcoming', 'cancelled', 'completed')),
     created_at    TEXT NOT NULL
@@ -191,6 +192,7 @@ CREATE TABLE IF NOT EXISTS events (
     category    TEXT NOT NULL DEFAULT 'culture'
                 CHECK (category IN ('culture', 'music', 'food', 'sport', 'community', 'art', 'other')),
     price       INTEGER NOT NULL DEFAULT 0,
+    image_url   TEXT NOT NULL DEFAULT '',
     status      TEXT NOT NULL DEFAULT 'published'
                 CHECK (status IN ('draft', 'published', 'cancelled')),
     created_at  TEXT NOT NULL

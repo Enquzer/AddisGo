@@ -105,6 +105,7 @@ export async function create(ctx) {
 
   const theme = String(body.theme ?? 'entoto').trim().toLowerCase() || 'entoto';
   if (!THEMES.includes(theme)) throw AppError.bad('Please choose a valid tour theme.');
+  const imageUrl = String(body.image_url ?? '').trim().slice(0, 500);
 
   const host = publicUser(ctx.db, auth.id);
   if (!host) throw AppError.notFound('Account not found.');
@@ -121,9 +122,9 @@ export async function create(ctx) {
   const tourId = ctx.db.tx(() => {
     const created = ctx.db.run(
       `INSERT INTO tours (host_id, title, description, meeting_point, lat, lng, starts_at, duration_min,
-          capacity, price, theme, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upcoming', ?)`,
-      [auth.id, title, description, meeting, lat, lng, startsAt, duration, capacity, price, theme, nowIso()],
+          capacity, price, theme, image_url, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upcoming', ?)`,
+      [auth.id, title, description, meeting, lat, lng, startsAt, duration, capacity, price, theme, imageUrl, nowIso()],
     );
     ctx.db.run('INSERT INTO tour_members (tour_id, user_id, joined_at) VALUES (?, ?, ?)', [
       created.lastInsertRowid,

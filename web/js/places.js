@@ -44,14 +44,6 @@ export const RIDE_CLASSES = [
     accent: '#9c5b3b',
     badge: 'Groups',
   },
-  {
-    key: 'bajaj',
-    name: 'Bajaj',
-    tagline: 'Quick hops around the neighbourhood',
-    seats: 3,
-    accent: '#c47c2b',
-    badge: 'Short trips',
-  },
 ];
 
 export const POPULAR_ROUTES = [

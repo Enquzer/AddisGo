@@ -11,7 +11,7 @@ import {
 } from '../lib/security.js';
 import { avatarColorFor, charLen, joinLanguages, splitLanguages, validColor, validEmail, validPhone } from '../lib/util.js';
 
-const CLASSES = ['e2', 'comfort', 'van', 'bajaj'];
+const CLASSES = ['e2', 'comfort', 'van'];
 const LIMIT_WINDOW = 10 * 60 * 1000;
 
 function cleanVehicle(vehicle) {

@@ -685,15 +685,6 @@ export default async function renderLanding(view, ctx = {}) {
                 </div>
                 <p>Spacious high-roof vans for group tours, Entoto day trips, and airport luggage runs.</p>
               </div>
-
-              <div class="fleet-card">
-                <div class="fleet-icon-box">${icon('navigation', 22)}</div>
-                <div class="fleet-meta">
-                  <strong>Neighbourhood Bajaj</strong>
-                  <small>Short hops · 3 seats</small>
-                </div>
-                <p>Quick, nimble transport through inner residential lanes and busy local markets.</p>
-              </div>
             </div>
 
             <div class="hub-foot-action">
