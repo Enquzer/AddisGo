@@ -661,10 +661,6 @@ export default async function renderLanding(view, ctx = {}) {
               <div class="landmark-3d-stage is-3d" id="landmark-3d-stage">
                 <div class="landmark-3d-map" id="landmark-3d-map" aria-label="3D Interactive Addis Map"></div>
                 <div class="landmark-3d-hud">
-                  <div class="hud-badge">
-                    <span class="hud-live-dot"></span>
-                    <span id="hud-mode-title">3D Street Map</span>
-                  </div>
                   <div class="hud-controls-group">
                     <button type="button" class="hud-toggle-pill is-active" id="btn-layer-street" title="Switch to OpenStreetMap Street View">
                       ${icon('map', 12)} <span>Street</span>
@@ -1056,7 +1052,6 @@ export default async function renderLanding(view, ctx = {}) {
   const btnLayerStreet = view.querySelector('#btn-layer-street');
   const btnLayerSat = view.querySelector('#btn-layer-sat');
   const btnRecenter = view.querySelector('#btn-recenter-map');
-  const hudModeTitle = view.querySelector('#hud-mode-title');
 
   let leafletMap = null;
   let currentTileLayer = null;
@@ -1065,12 +1060,6 @@ export default async function renderLanding(view, ctx = {}) {
   let markers = [];
   let is3D = true;
   let activeIdx = 0;
-
-  const updateHudTitle = () => {
-    if (!hudModeTitle) return;
-    const layerName = activeLayerType === 'sat' ? 'Satellite View' : 'Street Map';
-    hudModeTitle.textContent = is3D ? `3D ${layerName}` : `2D ${layerName}`;
-  };
 
   const setLayer = (type) => {
     if (!leafletMap || typeof window.L === 'undefined') return;
@@ -1105,7 +1094,6 @@ export default async function renderLanding(view, ctx = {}) {
 
     btnLayerStreet?.classList.toggle('is-active', type === 'street');
     btnLayerSat?.classList.toggle('is-active', type === 'sat');
-    updateHudTitle();
   };
 
   const toggle3DView = (forceVal = null) => {
@@ -1118,8 +1106,6 @@ export default async function renderLanding(view, ctx = {}) {
       const label = toggle3dBtn.querySelector('span');
       if (label) label.textContent = is3D ? '3D Tilt View' : '2D Flat View';
     }
-
-    updateHudTitle();
 
     setTimeout(() => {
       if (leafletMap) leafletMap.invalidateSize();

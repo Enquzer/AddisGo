@@ -7810,7 +7810,7 @@ input:checked + .slider-toggle:before {
   right: 14px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   z-index: 500;
   pointer-events: none;
