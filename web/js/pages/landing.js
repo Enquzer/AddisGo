@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import { state } from '../store.js';
 import { icon, logoMark } from '../ui/icons.js';
 import { esc, money, dateTime, minutes } from '../ui/format.js';
 import { themeImage } from '../ui/booking.js';
@@ -175,7 +176,8 @@ const POPULAR_AREAS = [
 ];
 
 export default async function renderLanding(view, ctx = {}) {
-  const isAuthed = Boolean(ctx.user);
+  const user = ctx.user || state.user;
+  const isAuthed = Boolean(user);
 
   view.innerHTML = `
     <section class="landing-page">
@@ -184,6 +186,16 @@ export default async function renderLanding(view, ctx = {}) {
         <div class="hero-container-side-by-side">
           <!-- LEFT COLUMN: Headline, Value Proposition, Action CTAs & Metrics -->
           <div class="hero-content-col">
+            ${isAuthed ? `
+              <div class="user-welcome-banner">
+                <span class="user-welcome-dot"></span>
+                <span>Welcome back, <strong>${esc(user?.name?.split(' ')[0] || 'rider')}</strong></span>
+                <span class="user-welcome-sep">·</span>
+                <a href="#/ride" class="user-welcome-link">${icon('car', 13)} Book a ride</a>
+                <span class="user-welcome-sep">·</span>
+                <a href="#/trips" class="user-welcome-link">${icon('route', 13)} My trips</a>
+              </div>
+            ` : ''}
             <div class="hero-badge">
               <span class="badge-dot"></span>
               <span>Addis Ababa · Electric city rides &amp; tours</span>

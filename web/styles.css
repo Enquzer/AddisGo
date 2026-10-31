@@ -9268,6 +9268,44 @@ input:checked + .slider-toggle:before {
 }
 
 /* ------------------------------------------------------------------ */
+/* Logged-in Home Page Welcome Banner                                 */
+/* ------------------------------------------------------------------ */
+.user-welcome-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 0.82rem;
+  color: #166534;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.user-welcome-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #16a34a;
+  flex-shrink: 0;
+}
+.user-welcome-link {
+  color: #15803d;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
+.user-welcome-link:hover {
+  text-decoration: underline;
+}
+.user-welcome-sep {
+  opacity: 0.4;
+}
+
+/* ------------------------------------------------------------------ */
 /* Horizontal Tiling for Trips Page Summary (Less scroll, easy access) */
 /* ------------------------------------------------------------------ */
 .trip-summary.stat-strip,

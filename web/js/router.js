@@ -6,6 +6,7 @@ import { icon } from './ui/icons.js';
 
 const routes = [
   { path: '/', load: () => import('./pages/home.js'), title: 'AddisGo', context: 'Move through Addis like a local' },
+  { path: '/dashboard', load: () => import('./pages/home.js'), title: 'My Dashboard', auth: true },
   { path: '/welcome', load: () => import('./pages/welcome.js'), title: 'Why AddisGo · Electric City Rides' },
   { path: '/login', load: () => import('./pages/auth.js'), title: 'Sign in', guestOnly: true },
   { path: '/register', load: () => import('./pages/auth.js'), title: 'Create account', guestOnly: true },

@@ -14,6 +14,13 @@ import { ADDIS_CENTER } from '../places.js';
 import renderLanding from './landing.js';
 
 export default async function renderHome(view, ctx) {
+  if (ctx.route?.path === '/dashboard') {
+    return renderDashboard(view, ctx);
+  }
+  return renderLanding(view, ctx);
+}
+
+async function renderDashboard(view, ctx) {
   if (!state.user) {
     return renderLanding(view, ctx);
   }

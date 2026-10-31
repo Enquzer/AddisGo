@@ -16,11 +16,13 @@ const NAV = {
   customer: [
     { href: '#/', icon: 'home', label: 'Home' },
     { href: '#/ride', icon: 'car', label: 'Book a ride', primary: true },
+    { href: '#/dashboard', icon: 'grid', label: 'Dashboard' },
     { href: '#/tours', icon: 'compass', label: 'City tours' },
     { href: '#/trips', icon: 'route', label: 'My trips' },
     { href: '#/profile', icon: 'user', label: 'Profile' },
   ],
   driver: [
+    { href: '#/', icon: 'home', label: 'Home' },
     { href: '#/driver', icon: 'grid', label: 'Dashboard', primary: true },
     { href: '#/driver?tab=requests', icon: 'car', label: 'Requests' },
     { href: '#/trips', icon: 'route', label: 'Trips' },
@@ -28,6 +30,7 @@ const NAV = {
     { href: '#/profile', icon: 'user', label: 'Profile' },
   ],
   admin: [
+    { href: '#/', icon: 'home', label: 'Home' },
     { href: '#/admin', icon: 'grid', label: 'Overview', primary: true },
     { href: '#/admin?tab=drivers', icon: 'car', label: 'Drivers' },
     { href: '#/admin?tab=users', icon: 'users', label: 'People' },
