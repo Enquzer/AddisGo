@@ -13,7 +13,10 @@ import { mountChat } from '../ui/chat.js';
 import { createPoller } from '../ui/poll.js';
 import { toast, toastError } from '../ui/toast.js';
 import { $, withBusy, scrollToTop } from '../ui/dom.js';
-import { PLACES, RIDE_CLASSES, POPULAR_ROUTES, ADDIS_CENTER, placeByName, classByKey } from '../places.js';
+import {
+  PLACES, RIDE_CLASSES, POPULAR_ROUTES, ADDIS_CENTER, placeByName, classByKey,
+  searchPlaces, haversineDistanceKm,
+} from '../places.js';
 
 export const ridePrefill = { pickup: null, dropoff: null };
 
@@ -70,18 +73,24 @@ async function renderBooking(view, ctx) {
             <div class="booking-route-block">
               <div class="route-field">
                 <span class="route-node is-start" aria-hidden="true"></span>
-                <label class="field">
-                  <span class="field-label">Pickup</span>
-                  <input class="field-input" id="pickup-input" name="pickup" list="places-list" value="${esc(store.pickup?.label || '')}" placeholder="Search a landmark or area" autocomplete="off" required />
-                </label>
+                <div class="autocomplete-wrap">
+                  <label class="field">
+                    <span class="field-label">Pickup</span>
+                    <input class="field-input" id="pickup-input" name="pickup" value="${esc(store.pickup?.label || '')}" placeholder="Search a landmark or area" autocomplete="off" required />
+                  </label>
+                  <div class="gmaps-autocomplete-dropdown" id="pickup-autocomplete" hidden></div>
+                </div>
                 <button type="button" class="icon-btn map-pick-btn" data-pick="pickup" title="Choose pickup on map" aria-label="Choose pickup on map">${icon('map-pin', 18)}</button>
               </div>
               <div class="route-field">
                 <span class="route-node is-end" aria-hidden="true"></span>
-                <label class="field">
-                  <span class="field-label">Destination</span>
-                  <input class="field-input" id="dropoff-input" name="dropoff" list="places-list" value="${esc(store.dropoff?.label || '')}" placeholder="Where are you going?" autocomplete="off" required />
-                </label>
+                <div class="autocomplete-wrap">
+                  <label class="field">
+                    <span class="field-label">Destination</span>
+                    <input class="field-input" id="dropoff-input" name="dropoff" value="${esc(store.dropoff?.label || '')}" placeholder="Where are you going?" autocomplete="off" required />
+                  </label>
+                  <div class="gmaps-autocomplete-dropdown" id="dropoff-autocomplete" hidden></div>
+                </div>
                 <button type="button" class="icon-btn map-pick-btn" data-pick="dropoff" title="Choose destination on map" aria-label="Choose destination on map">${icon('map-pin', 18)}</button>
               </div>
               <p class="field-hint route-hint" id="route-hint">${icon('info', 13)} Tap a pin button to drop your points directly on the map.</p>
@@ -170,9 +179,6 @@ async function renderBooking(view, ctx) {
           </section>
         </aside>
       </div>
-      <datalist id="places-list">
-        ${PLACES.map((p) => `<option value="${esc(p.name)}">${esc(p.area)}</option>`).join('')}
-      </datalist>
     </section>
   `;
 
@@ -180,6 +186,8 @@ async function renderBooking(view, ctx) {
   const errorBox = $('#booking-error', view);
   const pickupInput = $('#pickup-input', view);
   const dropoffInput = $('#dropoff-input', view);
+  const pickupDropdown = $('#pickup-autocomplete', view);
+  const dropoffDropdown = $('#dropoff-autocomplete', view);
   const classBox = $('#class-options', view);
   const summary = $('#fare-summary', view);
   const estimateNote = $('#estimate-note', view);
@@ -188,6 +196,7 @@ async function renderBooking(view, ctx) {
   const routeSummary = $('#booking-route-summary', view);
   const mapHint = $('#map-hint', view);
   const modeBadge = $('#map-mode-badge', view);
+  let userGeoLocation = null;
   let map = null;
   let estimateToken = 0;
   const cleanups = [];
@@ -281,44 +290,209 @@ async function renderBooking(view, ctx) {
     btn.addEventListener('click', () => setPickMode(btn.dataset.pick));
   });
 
-  pickupInput.addEventListener('input', () => {
-    const place = placeByName(pickupInput.value);
-    if (place) {
-      store.pickup = { lat: place.lat, lng: place.lng, label: place.name, id: place.id };
-      scheduleEstimateUpdate();
-      map?.setPickup(store.pickup);
-    } else {
-      store.pickup = null;
-      bookBtn.disabled = true;
-    }
-    renderRouteSummary();
-  });
-  dropoffInput.addEventListener('input', () => {
-    const place = placeByName(dropoffInput.value);
-    if (place) {
-      store.dropoff = { lat: place.lat, lng: place.lng, label: place.name, id: place.id };
-      scheduleEstimateUpdate();
-      if (store.dropoff) map?.setDropoff(store.dropoff);
-    } else {
-      store.dropoff = null;
-      bookBtn.disabled = true;
-    }
-    renderRouteSummary();
-  });
-  pickupInput.addEventListener('blur', () => {
-    window.setTimeout(() => {
-      if (!store.pickup && pickupInput.value.trim()) {
-        showError('Pick a suggested place or drop the pin on the map so we can find you.');
+  function highlightQuery(text, query) {
+    if (!query || !text) return esc(text || '');
+    const cleanQ = query.trim();
+    if (!cleanQ) return esc(text);
+    const escapedQ = cleanQ.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escapedQ})`, 'gi');
+    const parts = String(text).split(regex);
+    return parts.map((part) => (part.toLowerCase() === cleanQ.toLowerCase() ? `<mark>${esc(part)}</mark>` : esc(part))).join('');
+  }
+
+  function formatDist(distKm) {
+    if (distKm === null || distKm === undefined || isNaN(distKm)) return '';
+    if (distKm < 1) return `${Math.round(distKm * 1000)} m`;
+    return `${distKm.toFixed(1)} km`;
+  }
+
+  function setupAutocomplete(which, inputEl, dropdownEl) {
+    if (!inputEl || !dropdownEl) return { close: () => {} };
+    let activeIndex = -1;
+    let currentResults = [];
+
+    const getOrigin = () => {
+      if (which === 'dropoff') {
+        return store.pickup ? { lat: store.pickup.lat, lng: store.pickup.lng } : (userGeoLocation || ADDIS_CENTER);
       }
-    }, 160);
-  });
-  dropoffInput.addEventListener('blur', () => {
-    window.setTimeout(() => {
-      if (!store.dropoff && dropoffInput.value.trim()) {
-        showError('Pick a suggested destination or drop the pin on the map.');
+      return userGeoLocation || (store.dropoff ? { lat: store.dropoff.lat, lng: store.dropoff.lng } : ADDIS_CENTER);
+    };
+
+    const renderDropdown = (results, query) => {
+      currentResults = results;
+      activeIndex = -1;
+      if (!results.length) {
+        dropdownEl.innerHTML = `
+          <div class="gmaps-suggest-empty">
+            ${icon('search', 15)}
+            <span>No matching landmarks found for "${esc(query)}". Use the pin button to drop on map.</span>
+          </div>
+        `;
+        dropdownEl.hidden = false;
+        return;
       }
-    }, 160);
-  });
+
+      dropdownEl.innerHTML = results.map((place, idx) => {
+        const distStr = formatDist(place.distanceKm);
+        return `
+          <div class="gmaps-suggest-item" role="option" data-idx="${idx}" tabindex="-1">
+            <span class="gmaps-suggest-icon">${icon(place.icon || 'map-pin', 16)}</span>
+            <div class="gmaps-suggest-body">
+              <div class="gmaps-suggest-title">${highlightQuery(place.name, query)}</div>
+              <div class="gmaps-suggest-sub">
+                ${place.amharic ? `<span class="gmaps-suggest-geez">${esc(place.amharic)}</span> · ` : ''}
+                ${esc(place.area || '')}${place.landmarkDetail ? ` · ${esc(place.landmarkDetail)}` : ''}
+              </div>
+            </div>
+            ${distStr ? `<span class="gmaps-suggest-dist" title="Distance">${esc(distStr)}</span>` : ''}
+          </div>
+        `;
+      }).join('');
+      dropdownEl.hidden = false;
+    };
+
+    const closeDropdown = () => {
+      dropdownEl.hidden = true;
+      dropdownEl.innerHTML = '';
+      activeIndex = -1;
+      currentResults = [];
+    };
+
+    const selectPlace = (place) => {
+      inputEl.value = place.name;
+      const point = { lat: place.lat, lng: place.lng, label: place.name, id: place.id };
+      if (which === 'pickup') {
+        store.pickup = point;
+        map?.setPickup(store.pickup);
+        if (!store.dropoff) {
+          dropoffInput.focus();
+        }
+      } else {
+        store.dropoff = point;
+        map?.setDropoff(store.dropoff);
+      }
+      clearError();
+      closeDropdown();
+
+      if (store.pickup && store.dropoff) {
+        drawRoute(map, store.pickup, store.dropoff);
+        map?.fitPoints([[store.pickup.lat, store.pickup.lng], [store.dropoff.lat, store.dropoff.lng]]);
+        void loadEstimates();
+      } else {
+        map?.panTo(place.lat, place.lng, 14);
+      }
+      renderRouteSummary();
+    };
+
+    const updateActive = () => {
+      const items = dropdownEl.querySelectorAll('.gmaps-suggest-item');
+      items.forEach((el, idx) => {
+        el.classList.toggle('is-active', idx === activeIndex);
+        if (idx === activeIndex) {
+          el.scrollIntoView({ block: 'nearest' });
+        }
+      });
+    };
+
+    inputEl.addEventListener('input', () => {
+      const q = inputEl.value.trim();
+      const origin = getOrigin();
+      const results = searchPlaces(q, origin);
+      renderDropdown(results, q);
+
+      const matched = placeByName(inputEl.value);
+      if (matched) {
+        if (which === 'pickup') {
+          store.pickup = { lat: matched.lat, lng: matched.lng, label: matched.name, id: matched.id };
+          map?.setPickup(store.pickup);
+        } else {
+          store.dropoff = { lat: matched.lat, lng: matched.lng, label: matched.name, id: matched.id };
+          if (store.dropoff) map?.setDropoff(store.dropoff);
+        }
+        scheduleEstimateUpdate();
+        renderRouteSummary();
+      } else {
+        if (which === 'pickup') store.pickup = null;
+        else store.dropoff = null;
+        bookBtn.disabled = true;
+        renderRouteSummary();
+      }
+    });
+
+    inputEl.addEventListener('focus', () => {
+      const q = inputEl.value.trim();
+      const origin = getOrigin();
+      const results = searchPlaces(q, origin);
+      renderDropdown(results, q);
+    });
+
+    inputEl.addEventListener('blur', () => {
+      window.setTimeout(() => {
+        closeDropdown();
+        const current = which === 'pickup' ? store.pickup : store.dropoff;
+        if (!current && inputEl.value.trim()) {
+          showError(`Pick a suggested ${which === 'pickup' ? 'pickup point' : 'destination'} or drop a pin on the map.`);
+        }
+      }, 200);
+    });
+
+    inputEl.addEventListener('keydown', (e) => {
+      if (dropdownEl.hidden) {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          const q = inputEl.value.trim();
+          renderDropdown(searchPlaces(q, getOrigin()), q);
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (currentResults.length > 0) {
+          activeIndex = (activeIndex + 1) % currentResults.length;
+          updateActive();
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (currentResults.length > 0) {
+          activeIndex = (activeIndex - 1 + currentResults.length) % currentResults.length;
+          updateActive();
+        }
+      } else if (e.key === 'Enter') {
+        if (activeIndex >= 0 && activeIndex < currentResults.length) {
+          e.preventDefault();
+          selectPlace(currentResults[activeIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeDropdown();
+      }
+    });
+
+    dropdownEl.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const item = e.target.closest('.gmaps-suggest-item');
+      if (!item) return;
+      const idx = Number(item.dataset.idx);
+      if (currentResults[idx]) {
+        selectPlace(currentResults[idx]);
+      }
+    });
+
+    return { close: closeDropdown };
+  }
+
+  const pickupAuto = setupAutocomplete('pickup', pickupInput, pickupDropdown);
+  const dropoffAuto = setupAutocomplete('dropoff', dropoffInput, dropoffDropdown);
+
+  const onDocClick = (e) => {
+    if (!e.target.closest('.autocomplete-wrap')) {
+      pickupAuto.close();
+      dropoffAuto.close();
+    }
+  };
+  document.addEventListener('click', onDocClick);
+  cleanups.push(() => document.removeEventListener('click', onDocClick));
 
   view.querySelectorAll('[data-route]').forEach((chip) => {
     chip.addEventListener('click', () => {
@@ -328,6 +502,8 @@ async function renderBooking(view, ctx) {
       if (!from || !to) return;
       store.pickup = { lat: from.lat, lng: from.lng, label: from.name, id: from.id };
       store.dropoff = { lat: to.lat, lng: to.lng, label: to.name, id: to.id };
+      pickupAuto.close();
+      dropoffAuto.close();
       syncInputs();
       drawRoute(map, store.pickup, store.dropoff);
       map?.fitPoints([[from.lat, from.lng], [to.lat, to.lng]]);
@@ -341,6 +517,8 @@ async function renderBooking(view, ctx) {
     store.estimates = {};
     pickupInput.value = '';
     dropoffInput.value = '';
+    pickupAuto.close();
+    dropoffAuto.close();
     map?.destroy();
     if (mapEl) {
       map = new RideMap(mapEl, { center: ADDIS_CENTER, zoom: 12 });
@@ -357,6 +535,7 @@ async function renderBooking(view, ctx) {
     try {
       await withBusy(btn, async () => {
         const pos = await locateUser();
+        userGeoLocation = pos;
         applyPoint('pickup', pos);
         pickupInput.value = nearestLabel(pos.lat, pos.lng);
         toast('Pickup set to your current location.', { type: 'info' });
