@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
@@ -16,11 +17,11 @@ const PROJECT_DIR = path.dirname(API_DIR);
 
 const CSP = [
   "default-src 'self'",
-  "img-src 'self' data: blob: https://*.tile.openstreetmap.org",
+  "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.google.com https://*.googleapis.com https://*.gstatic.com https://*.arcgisonline.com",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self'",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  "connect-src 'self' https://*.google.com https://*.arcgisonline.com",
   "media-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
@@ -100,7 +101,9 @@ function originAllowed(req) {
   if (origin === `http://${host}` || origin === `https://${host}`) return true;
   try {
     const parsed = new URL(origin);
-    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]') return true;
+    const h = parsed.hostname;
+    if (h === 'localhost' || h === '127.0.0.1' || h === '[::1]') return true;
+    if (/^(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+)$/.test(h)) return true;
   } catch {
     return false;
   }
@@ -344,11 +347,24 @@ async function main() {
   const port = Number(process.env.PORT) > 0 ? Number(process.env.PORT) : 3003;
   const bound = await listen(server, port);
 
+  const nets = os.networkInterfaces();
+  const lanIps = [];
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254')) {
+        lanIps.push(net.address);
+      }
+    }
+  }
+
   console.log('');
   console.log('  AddisGo is running');
-  console.log(`  → http://localhost:${bound}`);
-  console.log(`  → database: ${dbFile}`);
-  if (seeded.seeded) console.log('  → demo data seeded (admin@addisgo.et / Admin123!)');
+  console.log(`  → Local (Computer): http://localhost:${bound}`);
+  for (const ip of lanIps) {
+    console.log(`  → Mobile Phone:     http://${ip}:${bound}`);
+  }
+  console.log(`  → Database:         ${dbFile}`);
+  if (seeded.seeded) console.log('  → Demo data seeded (admin@addisgo.et / Admin123!)');
   console.log('');
 
   let closing = false;
