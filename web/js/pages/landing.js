@@ -591,40 +591,30 @@ export default async function renderLanding(view, ctx = {}) {
             </div>
           </div>
 
-          <!-- TAB PANEL 1: Landmarks & Taxi Drops -->
+          <!-- TAB PANEL 1: Landmarks & Taxi Drops (Smart Compact Spotlight) -->
           <div class="hub-panel is-active" id="hub-panel-landmarks" role="tabpanel">
-            <div class="landmark-cards-grid">
-              ${POPULAR_AREAS.map((area) => `
-                <article class="landmark-card tone-${esc(area.tone)}">
-                  <div class="landmark-card-head">
-                    <span class="landmark-subcity-badge">${icon('map-pin', 13)} ${esc(area.subcity)}</span>
-                    <span class="landmark-fare-chip">${esc(area.fareEstimate)}</span>
-                  </div>
+            <div class="smart-landmark-layout">
+              <!-- Quick Landmark Selector -->
+              <div class="smart-landmark-selector" role="tablist" aria-label="Addis Landmarks">
+                ${POPULAR_AREAS.map((area, idx) => `
+                  <button type="button" class="smart-landmark-item ${idx === 0 ? 'is-active' : ''}" data-landmark-idx="${idx}" role="tab" aria-selected="${idx === 0 ? 'true' : 'false'}">
+                    <span class="smart-landmark-bullet tone-${esc(area.tone)}">${icon('map-pin', 14)}</span>
+                    <div class="smart-landmark-meta">
+                      <strong>${esc(area.name)}</strong>
+                      <small>${esc(area.subcity)} · <span class="smart-fare-pill">${esc(area.fareEstimate)}</span></small>
+                    </div>
+                    ${icon('chevron-right', 14, 'smart-landmark-chevron')}
+                  </button>
+                `).join('')}
+              </div>
 
-                  <div class="landmark-card-title">
-                    <h3>${esc(area.name)}</h3>
-                    <span class="landmark-geez">${esc(area.amharic)}</span>
-                  </div>
-
-                  <div class="landmark-driver-bubble">
-                    <div class="bubble-tag">${icon('car', 12)} Tell your taxi driver:</div>
-                    <p class="bubble-en">“${esc(area.taxiTip)}”</p>
-                    <p class="bubble-am">${esc(area.amharicPhonetic)}</p>
-                  </div>
-
-                  <p class="landmark-highlights">${icon('sparkle', 13)} ${esc(area.highlights)}</p>
-
-                  <div class="landmark-card-foot">
-                    <a class="landmark-book-btn" href="${isAuthed ? `#/ride?drop=${encodeURIComponent(area.name)}` : '#/register'}">
-                      Book ride here ${icon('arrow-right', 13)}
-                    </a>
-                  </div>
-                </article>
-              `).join('')}
+              <!-- Active Landmark Spotlight Card -->
+              <div class="smart-landmark-preview" id="smart-landmark-preview"></div>
             </div>
+
             <div class="hub-foot-action">
               <a class="btn btn-outline" href="${isAuthed ? '#/ride' : '#/register'}">
-                ${icon('map-pin', 14)} Book ride to any custom landmark
+                ${icon('map-pin', 14)} Book ride to any custom landmark in Addis
               </a>
             </div>
           </div>
@@ -979,6 +969,56 @@ export default async function renderLanding(view, ctx = {}) {
       });
     });
   });
+
+  // --- Smart Landmark Spotlight Switcher ---
+  const previewContainer = view.querySelector('#smart-landmark-preview');
+  const landmarkItems = view.querySelectorAll('.smart-landmark-item');
+
+  const renderLandmarkPreview = (idx) => {
+    const area = POPULAR_AREAS[idx] || POPULAR_AREAS[0];
+    if (!previewContainer || !area) return;
+    previewContainer.innerHTML = `
+      <article class="smart-spotlight-card tone-${esc(area.tone)}">
+        <div class="spotlight-header">
+          <div class="spotlight-title-group">
+            <span class="spotlight-badge">${icon('map-pin', 12)} ${esc(area.subcity)}</span>
+            <h3>${esc(area.name)} <span class="spotlight-geez">${esc(area.amharic)}</span></h3>
+          </div>
+          <span class="spotlight-fare">${icon('wallet', 13)} ${esc(area.fareEstimate)}</span>
+        </div>
+
+        <div class="spotlight-bubble">
+          <div class="bubble-tag">${icon('car', 12)} Tell your taxi driver:</div>
+          <p class="bubble-en">“${esc(area.taxiTip)}”</p>
+          <p class="bubble-am">${esc(area.amharicPhonetic)}</p>
+        </div>
+
+        <div class="spotlight-highlights">
+          ${icon('sparkle', 14)} <span>${esc(area.highlights)}</span>
+        </div>
+
+        <div class="spotlight-foot">
+          <a class="btn btn-primary btn-sm" href="${isAuthed ? `#/ride?drop=${encodeURIComponent(area.name)}` : '#/register'}">
+            ${icon('car', 14)} Book ride to ${esc(area.name)} ${icon('arrow-right', 12)}
+          </a>
+        </div>
+      </article>
+    `;
+  };
+
+  landmarkItems.forEach((item) => {
+    item.addEventListener('click', () => {
+      const idx = Number(item.getAttribute('data-landmark-idx') || 0);
+      landmarkItems.forEach((btn) => {
+        const isCurrent = btn === item;
+        btn.classList.toggle('is-active', isCurrent);
+        btn.setAttribute('aria-selected', isCurrent ? 'true' : 'false');
+      });
+      renderLandmarkPreview(idx);
+    });
+  });
+
+  renderLandmarkPreview(0);
 
   // --- Dynamic Stats Fetch ---
   const driversMetric = view.querySelector('#metric-drivers');
