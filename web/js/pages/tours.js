@@ -67,7 +67,7 @@ export default async function renderTours(view, ctx) {
           <p>Host up to six upcoming tours, set your own group size, and get paid directly. We handle the safety checks and the group chat.</p>
         </div>
         ${user
-          ? `<button type="button" class="btn btn-primary" data-host-cta>${icon('sparkle', 16)} Start hosting</button>`
+          ? `<button type="button" class="btn btn-primary" data-host-cta>${icon('plus', 16)} Start hosting</button>`
           : `<a class="btn btn-primary" href="#/register">${icon('arrow-right', 16)} Create a free account</a>`}
       </section>
     </section>
@@ -296,7 +296,7 @@ function openHostModal(ctx, onCreated) {
     `,
     footer: `
       <button type="button" class="btn btn-ghost" data-close>Cancel</button>
-      <button type="button" class="btn btn-primary" data-create>${icon('sparkle', 16)} Publish tour</button>
+      <button type="button" class="btn btn-primary" data-create>${icon('check', 16)} Publish tour</button>
     `,
   });
 

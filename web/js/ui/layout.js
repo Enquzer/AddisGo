@@ -11,7 +11,7 @@ const NAV = {
   guest: [
     { href: '#/', icon: 'home', label: 'Home' },
     { href: '#/tours', icon: 'compass', label: 'City tours' },
-    { href: '#/welcome', icon: 'sparkle', label: 'Why AddisGo' },
+    { href: '#/welcome', icon: 'shield', label: 'Why AddisGo' },
   ],
   customer: [
     { href: '#/', icon: 'home', label: 'Home' },

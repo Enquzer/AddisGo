@@ -107,7 +107,7 @@ export default async function renderAuth(view, ctx) {
           `}
 
           <button type="submit" class="btn btn-primary btn-lg btn-block" id="auth-submit">
-            ${icon(isRegister ? 'sparkle' : 'arrow-right', 18)} ${isRegister ? 'Create my account' : 'Sign in'}
+            ${icon(isRegister ? 'check' : 'arrow-right', 18)} ${isRegister ? 'Create my account' : 'Sign in'}
           </button>
         </form>
 

@@ -199,7 +199,7 @@ export function tourCard(tour, { href = null } = {}) {
 
 export function themeIcon(theme) {
   return {
-    entoto: 'leaf', merkato: 'map-pin', museum: 'award', bole: 'sparkle', custom: 'compass',
+    entoto: 'leaf', merkato: 'map-pin', museum: 'award', bole: 'compass', custom: 'compass',
   }[theme] || 'compass';
 }
 

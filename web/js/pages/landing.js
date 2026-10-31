@@ -57,7 +57,7 @@ const POPULAR_AREAS = [
     tone: 'amber',
     lat: 9.0345,
     lng: 38.7516,
-    icon: 'sparkle',
+    icon: 'landmark',
     imageUrl: '/assets/landmarks/piassa.jpg',
   },
   {
@@ -113,7 +113,7 @@ const POPULAR_AREAS = [
     tone: 'violet',
     lat: 8.9985,
     lng: 38.7780,
-    icon: 'sparkle',
+    icon: 'coffee',
     imageUrl: '/assets/landmarks/atlas.jpg',
   },
   {
@@ -547,7 +547,7 @@ export default async function renderLanding(view, ctx = {}) {
                       <div class="landmark-showcase-box">
                         <div class="showcase-header">
                           <span class="landmark-zone-pill">${icon('map-pin', 11)} Bole · Airport Corridor</span>
-                          <span class="audio-badge">${icon('sparkle', 11)} Audio Tip</span>
+                          <span class="audio-badge">${icon('volume-2', 11)} Audio Tip</span>
                         </div>
                         <div class="showcase-title-row">
                           <div>
@@ -607,7 +607,7 @@ export default async function renderLanding(view, ctx = {}) {
                         ${icon('map-pin', 10)} Taxi Drop
                       </button>
                       <button type="button" class="right-tab-pill" data-preset="foodcrawl">
-                        ${icon('sparkle', 10)} Food Crawl
+                        ${icon('coffee', 10)} Food Crawl
                       </button>
                     </div>
                   </div>
@@ -949,11 +949,11 @@ export default async function renderLanding(view, ctx = {}) {
       statusPill: `${icon('map-pin', 11)} Taxi Landmark`,
     },
     foodcrawl: {
-      icon: 'sparkle',
+      icon: 'coffee',
       iconClass: 'bg-amber-soft',
       label: 'Food Crawl Live',
       value: 'Bole After Dark · 5 joined',
-      statusPill: `${icon('sparkle', 11)} Tasting Tour`,
+      statusPill: `${icon('coffee', 11)} Tasting Tour`,
     },
   };
   const rightPresetKeys = ['rideshare', 'tourgroup', 'landmark', 'foodcrawl'];
@@ -1162,7 +1162,7 @@ export default async function renderLanding(view, ctx = {}) {
           </div>
 
           <div class="spotlight-highlights">
-            ${icon('sparkle', 14)} <span>${esc(area.highlights)}</span>
+            ${icon('check-circle', 14)} <span>${esc(area.highlights)}</span>
           </div>
 
           <div class="spotlight-foot">

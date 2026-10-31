@@ -522,7 +522,7 @@ function joinActions(tour, { isHost, isMember, open, started }) {
       <a class="btn btn-ghost btn-block" href="#/tours">Find another tour</a>`;
   }
   if (isHost) {
-    return `<span class="join-state is-host">${icon('sparkle', 16)} You are hosting this tour</span>
+    return `<span class="join-state is-host">${icon('award', 16)} You are hosting this tour</span>
       <span class="muted join-note">Members can join until the tour starts.</span>
       <button type="button" class="btn btn-ghost btn-block btn-danger-text" data-act="cancel-tour">${icon('ban', 15)} Cancel tour</button>`;
   }
