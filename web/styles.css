@@ -7656,48 +7656,318 @@ input:checked + .slider-toggle:before {
   }
 }
 
-/* Smart Compact Landmark Layout in Explorer Hub */
-.smart-landmark-layout {
+/* Linked Landmark Quick Navigation Strip */
+.linked-landmark-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid var(--border-light, #e2e8f0);
+  border-radius: var(--radius-lg, 12px);
+  padding: 8px 14px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 14px rgba(0, 17, 75, 0.03);
+}
+
+.linked-strip-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.linked-strip-scroll {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding: 2px 0;
+  width: 100%;
+}
+
+.linked-landmark-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 99px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  color: #1e293b;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.18s ease;
+}
+
+.linked-landmark-chip:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.linked-landmark-chip.is-active {
+  background: #00114b;
+  border-color: #00114b;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 17, 75, 0.22);
+}
+
+.linked-landmark-chip.is-active .chip-name {
+  color: #ffffff;
+}
+
+.chip-icon-box {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+}
+.chip-icon-box.tone-blue { color: #2563eb; }
+.chip-icon-box.tone-violet { color: #7c3aed; }
+.chip-icon-box.tone-green { color: #059669; }
+.chip-icon-box.tone-amber { color: #d97706; }
+
+.chip-name {
+  font-weight: 600;
+}
+
+.chip-fare {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #059669;
+  background: #ecfdf5;
+  border-radius: 99px;
+  padding: 1px 6px;
+}
+.linked-landmark-chip.is-active .chip-fare {
+  background: rgba(255, 255, 255, 0.2);
+  color: #34d399;
+}
+
+/* 3D Interactive Hub Layout */
+.interactive-3d-hub-layout {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
   gap: 20px;
   align-items: stretch;
   margin-bottom: 20px;
 }
 
-.smart-landmark-selector {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: #ffffff;
-  border: 1px solid var(--border-light, #e2e8f0);
-  border-radius: var(--radius-lg, 14px);
-  padding: 10px;
-  box-shadow: 0 4px 14px rgba(0, 17, 75, 0.03);
+/* 3D Perspective Map Stage */
+.landmark-3d-stage {
+  position: relative;
+  border-radius: var(--radius-lg, 16px);
+  overflow: hidden;
+  background: #030a21;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 16px 40px rgba(0, 17, 75, 0.16);
+  perspective: 1100px;
+  min-height: 400px;
 }
 
-.smart-landmark-item {
+.landmark-3d-map {
+  width: 100%;
+  height: 400px;
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  background: #f8fafc;
+}
+
+.landmark-3d-stage.is-3d .landmark-3d-map {
+  transform: rotateX(24deg) scale(1.08);
+  transform-origin: center bottom;
+}
+
+.landmark-3d-stage.is-flat .landmark-3d-map {
+  transform: rotateX(0deg) scale(1);
+}
+
+.landmark-3d-hud {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9px 12px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md, 8px);
+  justify-content: space-between;
+  z-index: 400;
+  pointer-events: none;
+}
+
+.hud-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 17, 75, 0.85);
+  backdrop-filter: blur(8px);
+  color: #ffffff;
+  padding: 6px 14px;
+  border-radius: 99px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.hud-live-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #10b981;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.35);
+  animation: pulseDot 2s infinite;
+}
+
+.hud-view-toggle {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 17, 75, 0.15);
+  color: #00114b;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 99px;
   cursor: pointer;
-  text-align: left;
+  box-shadow: 0 4px 14px rgba(0, 17, 75, 0.15);
   transition: all 0.18s ease;
-  width: 100%;
 }
 
-.smart-landmark-item:hover {
-  background: var(--surface-subtle, #f8fafc);
-  border-color: #e2e8f0;
+.hud-view-toggle:hover {
+  background: #f8fafc;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 17, 75, 0.22);
 }
 
-.smart-landmark-item.is-active {
-  background: linear-gradient(135deg, rgba(0, 17, 75, 0.04) 0%, rgba(37, 99, 235, 0.08) 100%);
-  border-color: rgba(37, 99, 235, 0.35);
+/* Custom 3D DivIcon Pins with Small Logo Icons */
+.custom-3d-marker-wrap {
+  background: none !important;
+  border: none !important;
+}
+
+.map-pin-3d {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center bottom;
+}
+
+.map-pin-3d:hover {
+  transform: scale(1.15) translateY(-4px);
+  z-index: 1000 !important;
+}
+
+.map-pin-3d.is-active {
+  transform: scale(1.25) translateY(-6px);
+  z-index: 1001 !important;
+}
+
+.pin-3d-head {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2.5px solid #2563eb;
+  box-shadow: 0 8px 18px rgba(0, 17, 75, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 3;
+}
+
+.map-pin-3d.tone-blue .pin-3d-head { border-color: #2563eb; color: #2563eb; }
+.map-pin-3d.tone-violet .pin-3d-head { border-color: #7c3aed; color: #7c3aed; }
+.map-pin-3d.tone-green .pin-3d-head { border-color: #059669; color: #059669; }
+.map-pin-3d.tone-amber .pin-3d-head { border-color: #d97706; color: #d97706; }
+
+.pin-3d-stem {
+  width: 3px;
+  height: 12px;
+  background: #2563eb;
+  margin-top: -3px;
+  border-radius: 2px;
+  z-index: 2;
+}
+
+.map-pin-3d.tone-violet .pin-3d-stem { background: #7c3aed; }
+.map-pin-3d.tone-green .pin-3d-stem { background: #059669; }
+.map-pin-3d.tone-amber .pin-3d-stem { background: #d97706; }
+
+.pin-3d-pulse {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 8px;
+  background: rgba(37, 99, 235, 0.4);
+  border-radius: 50%;
+  z-index: 1;
+}
+
+.map-pin-3d.is-active .pin-3d-pulse {
+  animation: pulseRing 1.8s infinite;
+}
+
+@keyframes pulseRing {
+  0% { transform: translateX(-50%) scale(0.8); opacity: 0.9; }
+  100% { transform: translateX(-50%) scale(2.4); opacity: 0; }
+}
+
+.pin-3d-badge {
+  position: absolute;
+  bottom: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 17, 75, 0.92);
+  backdrop-filter: blur(4px);
+  color: #ffffff;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.pin-3d-badge small {
+  color: #34d399;
+  font-weight: 700;
+}
+
+/* Spotlight Card in 3D Layout */
+.interactive-3d-hub-layout .smart-spotlight-card {
+  height: 100%;
+}
+
+@media (max-width: 900px) {
+  .interactive-3d-hub-layout {
+    grid-template-columns: 1fr;
+  }
+  .landmark-3d-map {
+    height: 320px;
+  }
+}
   box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
 }
 

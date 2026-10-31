@@ -13,6 +13,9 @@ const POPULAR_AREAS = [
     fareEstimate: '220–280 ETB',
     highlights: 'Tomoca Roastery · Edna Mall corridor · Boutique cafes',
     tone: 'blue',
+    lat: 8.9915,
+    lng: 38.7835,
+    icon: 'coffee',
   },
   {
     name: 'Kazanchis',
@@ -23,6 +26,9 @@ const POPULAR_AREAS = [
     fareEstimate: '180–240 ETB',
     highlights: 'Fendika Cultural Centre · UNECA · Inter Luxury',
     tone: 'violet',
+    lat: 9.0142,
+    lng: 38.7625,
+    icon: 'music',
   },
   {
     name: 'Meskel Square',
@@ -33,6 +39,9 @@ const POPULAR_AREAS = [
     fareEstimate: '190–250 ETB',
     highlights: 'Red Terror Martyrs Memorial · Light Rail Hub',
     tone: 'green',
+    lat: 9.0108,
+    lng: 38.7618,
+    icon: 'compass',
   },
   {
     name: 'Piazza / Arada',
@@ -43,6 +52,9 @@ const POPULAR_AREAS = [
     fareEstimate: '210–270 ETB',
     highlights: 'St. George Cathedral · Enrico Pastry · Silver shops',
     tone: 'amber',
+    lat: 9.0345,
+    lng: 38.7516,
+    icon: 'sparkle',
   },
   {
     name: 'Sarbet',
@@ -53,6 +65,9 @@ const POPULAR_AREAS = [
     fareEstimate: '230–300 ETB',
     highlights: 'African Union HQ · ICS Addis · International bistros',
     tone: 'blue',
+    lat: 9.0012,
+    lng: 38.7365,
+    icon: 'shield',
   },
   {
     name: 'Bole Medhanialem',
@@ -63,6 +78,9 @@ const POPULAR_AREAS = [
     fareEstimate: '200–260 ETB',
     highlights: 'Cathedral · Edna Mall · Specialty dining & shopping',
     tone: 'green',
+    lat: 8.9953,
+    lng: 38.7889,
+    icon: 'map-pin',
   },
   {
     name: 'Entoto Park Ridge',
@@ -73,6 +91,9 @@ const POPULAR_AREAS = [
     fareEstimate: '320–420 ETB',
     highlights: 'Sunset viewpoint · Eucalyptus trails · Fresh mountain air',
     tone: 'green',
+    lat: 9.0732,
+    lng: 38.7654,
+    icon: 'leaf',
   },
   {
     name: 'Bole Atlas',
@@ -83,6 +104,9 @@ const POPULAR_AREAS = [
     fareEstimate: '190–250 ETB',
     highlights: 'Boutique lounges · 24/7 cafes · Live music',
     tone: 'violet',
+    lat: 8.9985,
+    lng: 38.7780,
+    icon: 'sparkle',
   },
   {
     name: 'Mexico',
@@ -93,6 +117,9 @@ const POPULAR_AREAS = [
     fareEstimate: '180–230 ETB',
     highlights: 'Commercial business district · Light rail transfer',
     tone: 'blue',
+    lat: 9.0115,
+    lng: 38.7450,
+    icon: 'navigation',
   },
   {
     name: '4 Kilo',
@@ -103,6 +130,9 @@ const POPULAR_AREAS = [
     fareEstimate: '200–260 ETB',
     highlights: 'National Museum · Unity Park · Historic universities',
     tone: 'amber',
+    lat: 9.0340,
+    lng: 38.7620,
+    icon: 'bookmark',
   },
   {
     name: 'Gerji',
@@ -113,6 +143,9 @@ const POPULAR_AREAS = [
     fareEstimate: '210–270 ETB',
     highlights: 'Residential cafes · Artisan bakeries · Quiet leafy lanes',
     tone: 'green',
+    lat: 8.9950,
+    lng: 38.8300,
+    icon: 'map-pin',
   },
   {
     name: '22 Mazoria',
@@ -123,6 +156,9 @@ const POPULAR_AREAS = [
     fareEstimate: '190–250 ETB',
     highlights: 'Transit hub · Traditional tej houses · Live acoustic music',
     tone: 'violet',
+    lat: 9.0200,
+    lng: 38.7880,
+    icon: 'zap',
   },
 ];
 
@@ -591,21 +627,36 @@ export default async function renderLanding(view, ctx = {}) {
             </div>
           </div>
 
-          <!-- TAB PANEL 1: Landmarks & Taxi Drops (Smart Compact Spotlight) -->
+          <!-- TAB PANEL 1: Landmarks & Taxi Drops (3D Interactive Map + Linked Text + Spotlight) -->
           <div class="hub-panel is-active" id="hub-panel-landmarks" role="tabpanel">
-            <div class="smart-landmark-layout">
-              <!-- Quick Landmark Selector -->
-              <div class="smart-landmark-selector" role="tablist" aria-label="Addis Landmarks">
+            <!-- Linked Text Location Quick Navigation Strip -->
+            <div class="linked-landmark-strip" role="tablist" aria-label="Addis Landmark Quick Jump">
+              <span class="linked-strip-label">${icon('navigation', 13)} Quick Jump:</span>
+              <div class="linked-strip-scroll">
                 ${POPULAR_AREAS.map((area, idx) => `
-                  <button type="button" class="smart-landmark-item ${idx === 0 ? 'is-active' : ''}" data-landmark-idx="${idx}" role="tab" aria-selected="${idx === 0 ? 'true' : 'false'}">
-                    <span class="smart-landmark-bullet tone-${esc(area.tone)}">${icon('map-pin', 14)}</span>
-                    <div class="smart-landmark-meta">
-                      <strong>${esc(area.name)}</strong>
-                      <small>${esc(area.subcity)} · <span class="smart-fare-pill">${esc(area.fareEstimate)}</span></small>
-                    </div>
-                    ${icon('chevron-right', 14, 'smart-landmark-chevron')}
+                  <button type="button" class="linked-landmark-chip ${idx === 0 ? 'is-active' : ''}" data-landmark-idx="${idx}" role="tab" aria-selected="${idx === 0 ? 'true' : 'false'}">
+                    <span class="chip-icon-box tone-${esc(area.tone)}">${icon(area.icon || 'map-pin', 12)}</span>
+                    <span class="chip-name">${esc(area.name)}</span>
+                    <span class="chip-fare">${esc(area.fareEstimate.split('–')[0])} ETB</span>
                   </button>
                 `).join('')}
+              </div>
+            </div>
+
+            <!-- 3D Interactive Map Stage + Spotlight Info Layout -->
+            <div class="interactive-3d-hub-layout">
+              <!-- 3D Map Stage -->
+              <div class="landmark-3d-stage is-3d" id="landmark-3d-stage">
+                <div class="landmark-3d-map" id="landmark-3d-map" aria-label="3D Interactive Addis Map"></div>
+                <div class="landmark-3d-hud">
+                  <div class="hud-badge">
+                    <span class="hud-live-dot"></span>
+                    <span>3D Interactive Map</span>
+                  </div>
+                  <button type="button" class="hud-view-toggle" id="btn-3d-toggle" title="Toggle 3D Perspective">
+                    ${icon('maximize', 13)} <span>3D Tilt View</span>
+                  </button>
+                </div>
               </div>
 
               <!-- Active Landmark Spotlight Card -->
@@ -970,9 +1021,17 @@ export default async function renderLanding(view, ctx = {}) {
     });
   });
 
-  // --- Smart Landmark Spotlight Switcher ---
+  // --- 3D Interactive Map & Landmark Spotlight ---
+  const mapContainer = view.querySelector('#landmark-3d-map');
+  const stageContainer = view.querySelector('#landmark-3d-stage');
   const previewContainer = view.querySelector('#smart-landmark-preview');
-  const landmarkItems = view.querySelectorAll('.smart-landmark-item');
+  const chips = view.querySelectorAll('.linked-landmark-chip');
+  const toggle3dBtn = view.querySelector('#btn-3d-toggle');
+
+  let leafletMap = null;
+  let markers = [];
+  let is3D = true;
+  let activeIdx = 0;
 
   const renderLandmarkPreview = (idx) => {
     const area = POPULAR_AREAS[idx] || POPULAR_AREAS[0];
@@ -981,7 +1040,7 @@ export default async function renderLanding(view, ctx = {}) {
       <article class="smart-spotlight-card tone-${esc(area.tone)}">
         <div class="spotlight-header">
           <div class="spotlight-title-group">
-            <span class="spotlight-badge">${icon('map-pin', 12)} ${esc(area.subcity)}</span>
+            <span class="spotlight-badge">${icon(area.icon || 'map-pin', 12)} ${esc(area.subcity)}</span>
             <h3>${esc(area.name)} <span class="spotlight-geez">${esc(area.amharic)}</span></h3>
           </div>
           <span class="spotlight-fare">${icon('wallet', 13)} ${esc(area.fareEstimate)}</span>
@@ -1006,19 +1065,126 @@ export default async function renderLanding(view, ctx = {}) {
     `;
   };
 
-  landmarkItems.forEach((item) => {
-    item.addEventListener('click', () => {
-      const idx = Number(item.getAttribute('data-landmark-idx') || 0);
-      landmarkItems.forEach((btn) => {
-        const isCurrent = btn === item;
-        btn.classList.toggle('is-active', isCurrent);
-        btn.setAttribute('aria-selected', isCurrent ? 'true' : 'false');
-      });
-      renderLandmarkPreview(idx);
+  const selectLandmark = (idx, panMap = true) => {
+    activeIdx = idx;
+    const area = POPULAR_AREAS[idx];
+    if (!area) return;
+
+    // Update chips
+    chips.forEach((c) => {
+      const match = Number(c.getAttribute('data-landmark-idx')) === idx;
+      c.classList.toggle('is-active', match);
+      c.setAttribute('aria-selected', match ? 'true' : 'false');
+      if (match) c.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    });
+
+    // Update 3D map markers
+    view.querySelectorAll('.map-pin-3d').forEach((pin) => {
+      pin.classList.toggle('is-active', Number(pin.dataset.idx) === idx);
+    });
+
+    // Pan map smoothly to the 3D pin location
+    if (panMap && leafletMap) {
+      leafletMap.flyTo([area.lat, area.lng], 14, { duration: 0.7 });
+    }
+
+    renderLandmarkPreview(idx);
+  };
+
+  chips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const idx = Number(chip.getAttribute('data-landmark-idx') || 0);
+      selectLandmark(idx, true);
     });
   });
 
-  renderLandmarkPreview(0);
+  // Toggle 3D Perspective Tilt vs Flat 2D View
+  toggle3dBtn?.addEventListener('click', () => {
+    is3D = !is3D;
+    stageContainer?.classList.toggle('is-3d', is3D);
+    stageContainer?.classList.toggle('is-flat', !is3D);
+    if (toggle3dBtn) {
+      toggle3dBtn.innerHTML = is3D
+        ? `${icon('maximize', 13)} <span>3D Tilt View</span>`
+        : `${icon('minimize-2', 13)} <span>2D Flat View</span>`;
+    }
+    setTimeout(() => {
+      if (leafletMap) leafletMap.invalidateSize();
+    }, 350);
+  });
+
+  // Initialize Leaflet with 3D Logo Icons & Connected Corridors
+  if (mapContainer && window.L) {
+    const L = window.L;
+    try {
+      leafletMap = L.map(mapContainer, {
+        center: [9.018, 38.765],
+        zoom: 13,
+        zoomControl: false,
+        attributionControl: false,
+        scrollWheelZoom: false,
+        dragging: true,
+        tap: true,
+      });
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        subdomains: 'abcd',
+      }).addTo(leafletMap);
+
+      // Connected City Transit Corridors Line
+      const routePoints = [
+        [9.0732, 38.7654], // Entoto
+        [9.0345, 38.7516], // Piassa
+        [9.0142, 38.7625], // Kazanchis
+        [9.0108, 38.7618], // Meskel Sq
+        [9.0012, 38.7365], // Sarbet
+        [9.0108, 38.7618], // back to Meskel
+        [8.9985, 38.7780], // Atlas
+        [8.9953, 38.7889], // Bole Medhanialem
+        [8.9915, 38.7835], // Bole Japan
+      ];
+      L.polyline(routePoints, {
+        color: '#2563eb',
+        weight: 3.5,
+        opacity: 0.65,
+        dashArray: '6, 8',
+        lineCap: 'round',
+      }).addTo(leafletMap);
+
+      // Add pins with small logo icons on mentioned spots
+      POPULAR_AREAS.forEach((area, idx) => {
+        const pinIcon = L.divIcon({
+          className: 'custom-3d-marker-wrap',
+          html: `
+            <div class="map-pin-3d tone-${area.tone} ${idx === 0 ? 'is-active' : ''}" id="map-pin-${idx}" data-idx="${idx}">
+              <div class="pin-3d-pulse"></div>
+              <div class="pin-3d-head">
+                <span class="pin-3d-icon">${icon(area.icon || 'map-pin', 14)}</span>
+              </div>
+              <div class="pin-3d-stem"></div>
+              <div class="pin-3d-badge">
+                <strong>${esc(area.name)}</strong>
+                <small>${esc(area.fareEstimate.split('–')[0])} ETB</small>
+              </div>
+            </div>
+          `,
+          iconSize: [44, 52],
+          iconAnchor: [22, 50],
+        });
+
+        const marker = L.marker([area.lat, area.lng], { icon: pinIcon }).addTo(leafletMap);
+        marker.on('click', () => {
+          selectLandmark(idx, false);
+        });
+        markers.push(marker);
+      });
+    } catch (err) {
+      console.warn('Could not initialize 3D landing map', err);
+    }
+  }
+
+  selectLandmark(0, false);
 
   // --- Dynamic Stats Fetch ---
   const driversMetric = view.querySelector('#metric-drivers');
