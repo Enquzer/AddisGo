@@ -7832,45 +7832,21 @@ input:checked + .slider-toggle:before {
 }
 
 /* 3D Perspective Map Stage */
+/* Interactive Addis Map Stage (clean 2D Viewport) */
 .landmark-3d-stage {
   position: relative;
   border-radius: var(--radius-lg, 16px);
   overflow: hidden;
-  background: #0b1329;
+  background: #f8fafc;
   border: 1px solid #cbd5e1;
-  box-shadow: 0 16px 40px rgba(0, 17, 75, 0.16);
-  perspective: 1100px;
-  min-height: 420px;
+  box-shadow: 0 10px 30px rgba(0, 17, 75, 0.08);
+  min-height: 440px;
 }
 
 .landmark-3d-map {
   width: 100%;
-  height: 420px;
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), filter 0.3s ease;
+  height: 440px;
   background: #f1f5f9;
-}
-
-.landmark-3d-stage.is-3d .landmark-3d-map {
-  transform: rotateX(24deg) scale(1.08);
-  transform-origin: center bottom;
-}
-
-.landmark-3d-stage.is-flat .landmark-3d-map {
-  transform: rotateX(0deg) scale(1);
-  transform-origin: center center;
-}
-
-/* Stand markers upright perpendicular in 3D perspective */
-.landmark-3d-stage.is-3d .custom-3d-marker-wrap {
-  transform: rotateX(-24deg);
-  transform-origin: center bottom;
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.landmark-3d-stage.is-flat .custom-3d-marker-wrap {
-  transform: rotateX(0deg);
-  transform-origin: center bottom;
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .landmark-3d-hud {
@@ -7923,14 +7899,14 @@ input:checked + .slider-toggle:before {
 .hud-toggle-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  background: rgba(255, 255, 255, 0.92);
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(0, 17, 75, 0.15);
   color: #00114b;
   font-size: 0.76rem;
   font-weight: 700;
-  padding: 6px 12px;
+  padding: 6px 13px;
   border-radius: 99px;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(0, 17, 75, 0.12);
@@ -7950,27 +7926,127 @@ input:checked + .slider-toggle:before {
   box-shadow: 0 4px 14px rgba(0, 17, 75, 0.3);
 }
 
-.hud-view-toggle {
-  pointer-events: auto;
+/* User Location & "You are here" Marker Styling */
+.user-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.4);
+  animation: pulse-user-dot 1.8s infinite;
+  display: inline-block;
+}
+
+@keyframes pulse-user-dot {
+  0% { transform: scale(0.9); box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.6); }
+  70% { transform: scale(1.2); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.user-here-div-icon {
+  background: none !important;
+  border: none !important;
+}
+
+.user-here-pulse-wrap {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.user-here-radar {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.25);
+  border: 1.5px solid rgba(16, 185, 129, 0.65);
+  animation: user-radar-pulse 2.2s infinite ease-out;
+  pointer-events: none;
+}
+
+@keyframes user-radar-pulse {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.user-here-core {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #10b981;
+  border: 3px solid #ffffff;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.6), 0 2px 6px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  z-index: 5;
+  transition: transform 0.2s ease;
+}
+
+.user-here-pulse-wrap:hover .user-here-core {
+  transform: scale(1.18);
+}
+
+.user-here-callout {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+  filter: drop-shadow(0 4px 12px rgba(0, 17, 75, 0.25));
+}
+
+.user-here-callout .here-tag {
+  background: #00114b;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+}
+
+.user-here-callout .here-dist {
+  margin-top: 3px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #047857;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.spotlight-distance-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #2563eb;
-  border: 1px solid #1d4ed8;
-  color: #ffffff;
-  font-size: 0.76rem;
-  font-weight: 700;
-  padding: 6px 14px;
-  border-radius: 99px;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.32);
-  transition: all 0.18s ease;
-}
-
-.hud-view-toggle:hover {
-  background: #1d4ed8;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.4);
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-top: 6px;
 }
 
 /* Custom 3D DivIcon Pins with Small Logo Icons */

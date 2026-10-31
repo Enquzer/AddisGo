@@ -12,6 +12,7 @@ function hasLeaflet() {
 
 function pinIcon(kind, label = '') {
   let inner;
+  const displayLabel = label || (kind === 'current' ? 'You are here' : '');
   if (kind === 'pickup') {
     inner = '<span class="map-pin-dot"></span>';
   } else if (kind === 'dropoff') {
@@ -23,7 +24,7 @@ function pinIcon(kind, label = '') {
   }
   return window.L.divIcon({
     className: `map-pin map-pin-${kind}`,
-    html: `<span class="map-pin-body">${inner}</span>${label ? `<span class="map-pin-label">${esc(label)}</span>` : ''}`,
+    html: `<span class="map-pin-body">${inner}</span>${displayLabel ? `<span class="map-pin-label">${esc(displayLabel)}</span>` : ''}`,
     iconSize: (kind === 'driver' || kind === 'current' || kind === 'user') ? [32, 32] : [22, 22],
     iconAnchor: (kind === 'driver' || kind === 'current' || kind === 'user') ? [16, 16] : [11, 11],
   });
@@ -58,7 +59,7 @@ export class RideMap {
       tap: interactive,
     });
     L.control.zoom({ position: 'bottomright' }).addTo(this.map);
-    L.tileLayer(TILE_URL, {
+    this.currentTileLayer = L.tileLayer(TILE_URL, {
       maxZoom: 19,
       minZoom: 10,
       attribution: ATTRIBUTION,
@@ -77,6 +78,38 @@ export class RideMap {
 
   invalidate() {
     this.map?.invalidateSize();
+  }
+
+  setLayer(type) {
+    if (!this.map || !window.L) return;
+    const L = window.L;
+    if (this.currentTileLayer) {
+      this.map.removeLayer(this.currentTileLayer);
+      this.currentTileLayer = null;
+    }
+    if (type === 'sat') {
+      this.currentTileLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        subdomains: ['0', '1', '2', '3'],
+        maxZoom: 20,
+        maxNativeZoom: 20,
+        attribution: '&copy; Google Satellite Imagery',
+      }).addTo(this.map);
+      this.currentTileLayer.on('tileerror', (e) => {
+        if (e?.tile && !e.tile.__fb) {
+          e.tile.__fb = true;
+          const { z, y, x } = e.coords;
+          e.tile.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+        }
+      });
+    } else {
+      this.currentTileLayer = L.tileLayer(TILE_URL, {
+        maxZoom: 19,
+        minZoom: 10,
+        attribution: ATTRIBUTION,
+        crossOrigin: true,
+      }).addTo(this.map);
+    }
+    setTimeout(() => this.map?.invalidateSize(), 60);
   }
 
   onPick(mode, handler) {

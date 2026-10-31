@@ -667,21 +667,21 @@ export default async function renderLanding(view, ctx = {}) {
               </div>
             </div>
 
-            <!-- 3D Interactive Map Stage + Spotlight Info Layout -->
+            <!-- Interactive Map Stage + Spotlight Info Layout -->
             <div class="interactive-3d-hub-layout">
-              <!-- 3D Map Stage -->
-              <div class="landmark-3d-stage is-3d" id="landmark-3d-stage">
-                <div class="landmark-3d-map" id="landmark-3d-map" aria-label="3D Interactive Addis Map"></div>
+              <!-- Map Stage -->
+              <div class="landmark-3d-stage" id="landmark-3d-stage">
+                <div class="landmark-3d-map" id="landmark-3d-map" aria-label="Interactive Addis Map"></div>
                 <div class="landmark-3d-hud">
                   <div class="hud-controls-group">
-                    <button type="button" class="hud-toggle-pill is-active" id="btn-layer-street" title="Switch to OpenStreetMap Street View">
+                    <button type="button" class="hud-toggle-pill is-active" id="btn-layer-street" title="Switch to Street Map">
                       ${icon('map', 12)} <span>Street</span>
                     </button>
                     <button type="button" class="hud-toggle-pill" id="btn-layer-sat" title="Switch to Satellite Street View">
                       ${icon('globe', 12)} <span>Satellite</span>
                     </button>
-                    <button type="button" class="hud-view-toggle is-active" id="btn-3d-toggle" title="Toggle 3D Perspective vs 2D Flat View">
-                      ${icon('maximize', 13)} <span id="toggle-3d-label">3D Tilt View</span>
+                    <button type="button" class="hud-toggle-pill is-active" id="btn-user-loc" title="Find my location (You are here)">
+                      <span class="user-pulse-dot"></span> <span>You are here</span>
                     </button>
                     <button type="button" class="hud-toggle-pill" id="btn-recenter-map" title="Recenter Map on Central Addis">
                       ${icon('navigation', 12)} <span>Center</span>
@@ -1055,23 +1055,40 @@ export default async function renderLanding(view, ctx = {}) {
     });
   });
 
-  // --- 3D Interactive Map & Landmark Spotlight ---
+  // --- Interactive Map & Landmark Spotlight ---
   const mapContainer = view.querySelector('#landmark-3d-map');
   const stageContainer = view.querySelector('#landmark-3d-stage');
   const previewContainer = view.querySelector('#smart-landmark-preview');
   const chips = view.querySelectorAll('.linked-landmark-chip');
-  const toggle3dBtn = view.querySelector('#btn-3d-toggle');
   const btnLayerStreet = view.querySelector('#btn-layer-street');
   const btnLayerSat = view.querySelector('#btn-layer-sat');
+  const btnUserLoc = view.querySelector('#btn-user-loc');
   const btnRecenter = view.querySelector('#btn-recenter-map');
 
   let leafletMap = null;
   let currentTileLayer = null;
-  let satelliteOverlayLayer = null;
   let activeLayerType = 'street';
   let markers = [];
-  let is3D = true;
   let activeIdx = 0;
+
+  // User "You are here" Location State
+  let userCoords = { lat: 9.0108, lng: 38.7618 }; // Default to central Meskel Square / Bole corridor
+  let userMarker = null;
+  let userGuideLine = null;
+
+  const calcStraightDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.max(0.3, Math.round(R * c * 1.25 * 10) / 10);
+  };
 
   const setLayer = (type) => {
     if (!leafletMap || typeof window.L === 'undefined') return;
@@ -1082,21 +1099,22 @@ export default async function renderLanding(view, ctx = {}) {
       leafletMap.removeLayer(currentTileLayer);
       currentTileLayer = null;
     }
-    if (satelliteOverlayLayer) {
-      leafletMap.removeLayer(satelliteOverlayLayer);
-      satelliteOverlayLayer = null;
-    }
 
     if (type === 'sat') {
-      currentTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-        attribution: '&copy; Esri, Maxar',
+      currentTileLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        subdomains: ['0', '1', '2', '3'],
+        maxZoom: 20,
+        maxNativeZoom: 20,
+        attribution: '&copy; Google Satellite / Imagery',
       }).addTo(leafletMap);
 
-      satelliteOverlayLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-        opacity: 0.95,
-      }).addTo(leafletMap);
+      currentTileLayer.on('tileerror', (e) => {
+        if (e?.tile && !e.tile.__fallback) {
+          e.tile.__fallback = true;
+          const { z, y, x } = e.coords;
+          e.tile.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+        }
+      });
     } else {
       currentTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
@@ -1106,27 +1124,83 @@ export default async function renderLanding(view, ctx = {}) {
 
     btnLayerStreet?.classList.toggle('is-active', type === 'street');
     btnLayerSat?.classList.toggle('is-active', type === 'sat');
-  };
-
-  const toggle3DView = (forceVal = null) => {
-    is3D = forceVal !== null ? forceVal : !is3D;
-    stageContainer?.classList.toggle('is-3d', is3D);
-    stageContainer?.classList.toggle('is-flat', !is3D);
-
-    if (toggle3dBtn) {
-      toggle3dBtn.classList.toggle('is-active', is3D);
-      const label = toggle3dBtn.querySelector('span');
-      if (label) label.textContent = is3D ? '3D Tilt View' : '2D Flat View';
-    }
-
     setTimeout(() => {
       if (leafletMap) leafletMap.invalidateSize();
-    }, 250);
+    }, 60);
   };
 
-  toggle3dBtn?.addEventListener('click', () => toggle3DView());
+  const updateUserLocationMarker = () => {
+    if (!leafletMap || typeof window.L === 'undefined') return;
+    const L = window.L;
+    const activeArea = POPULAR_AREAS[activeIdx] || POPULAR_AREAS[0];
+    const distKm = calcStraightDistance(userCoords.lat, userCoords.lng, activeArea.lat, activeArea.lng);
+    const estMin = Math.max(3, Math.round(distKm * 2.5));
+
+    const hereHtml = `
+      <div class="user-here-pulse-wrap" title="You are here (Click to center)">
+        <div class="user-here-radar"></div>
+        <div class="user-here-core">
+          ${icon('navigation', 13)}
+        </div>
+        <div class="user-here-callout">
+          <span class="here-tag">You are here</span>
+          <span class="here-dist">${distKm} km to ${esc(activeArea.name)} (~${estMin} min)</span>
+        </div>
+      </div>
+    `;
+
+    const hereIcon = L.divIcon({
+      className: 'user-here-div-icon',
+      html: hereHtml,
+      iconSize: [42, 42],
+      iconAnchor: [21, 21],
+    });
+
+    if (userMarker) {
+      userMarker.setLatLng([userCoords.lat, userCoords.lng]);
+      userMarker.setIcon(hereIcon);
+    } else {
+      userMarker = L.marker([userCoords.lat, userCoords.lng], {
+        icon: hereIcon,
+        zIndexOffset: 1200,
+      }).addTo(leafletMap);
+
+      userMarker.on('click', () => {
+        leafletMap.flyTo([userCoords.lat, userCoords.lng], 15, { duration: 0.8 });
+      });
+    }
+
+    if (userGuideLine) {
+      leafletMap.removeLayer(userGuideLine);
+      userGuideLine = null;
+    }
+    userGuideLine = L.polyline(
+      [
+        [userCoords.lat, userCoords.lng],
+        [activeArea.lat, activeArea.lng],
+      ],
+      {
+        color: '#10b981',
+        weight: 3,
+        dashArray: '5, 8',
+        opacity: 0.85,
+        lineCap: 'round',
+      }
+    ).addTo(leafletMap);
+  };
+
   btnLayerStreet?.addEventListener('click', () => setLayer('street'));
   btnLayerSat?.addEventListener('click', () => setLayer('sat'));
+  btnUserLoc?.addEventListener('click', () => {
+    if (!leafletMap || typeof window.L === 'undefined') return;
+    const L = window.L;
+    const activeArea = POPULAR_AREAS[activeIdx] || POPULAR_AREAS[0];
+    const bounds = L.latLngBounds([
+      [userCoords.lat, userCoords.lng],
+      [activeArea.lat, activeArea.lng],
+    ]);
+    leafletMap.flyToBounds(bounds.pad(0.28), { duration: 0.8 });
+  });
   btnRecenter?.addEventListener('click', () => {
     if (leafletMap) {
       leafletMap.flyTo([9.018, 38.765], 13, { duration: 0.8 });
@@ -1136,6 +1210,9 @@ export default async function renderLanding(view, ctx = {}) {
   const renderLandmarkPreview = (idx) => {
     const area = POPULAR_AREAS[idx] || POPULAR_AREAS[0];
     if (!previewContainer || !area) return;
+    const distKm = calcStraightDistance(userCoords.lat, userCoords.lng, area.lat, area.lng);
+    const estMin = Math.max(3, Math.round(distKm * 2.5));
+
     previewContainer.innerHTML = `
       <article class="smart-spotlight-card tone-${esc(area.tone)}">
         <div class="spotlight-media-wrap">
@@ -1150,6 +1227,9 @@ export default async function renderLanding(view, ctx = {}) {
           <div class="spotlight-header">
             <div class="spotlight-title-group">
               <h3>${esc(area.name)} <span class="spotlight-geez">${esc(area.amharic)}</span></h3>
+            </div>
+            <div class="spotlight-distance-pill" title="Estimated distance from your location">
+              ${icon('navigation', 12)} <span><strong>${distKm} km</strong> from you (~${estMin} min)</span>
             </div>
           </div>
 
@@ -1186,7 +1266,7 @@ export default async function renderLanding(view, ctx = {}) {
       if (match) c.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     });
 
-    // Update 3D map markers
+    // Update map markers
     view.querySelectorAll('.map-pin-3d').forEach((pin) => {
       pin.classList.toggle('is-active', Number(pin.dataset.idx) === idx);
     });
@@ -1196,6 +1276,7 @@ export default async function renderLanding(view, ctx = {}) {
       leafletMap.flyTo([area.lat, area.lng], 15, { duration: 0.8 });
     }
 
+    updateUserLocationMarker();
     renderLandmarkPreview(idx);
   };
 
@@ -1270,6 +1351,27 @@ export default async function renderLanding(view, ctx = {}) {
         });
         markers.push(marker);
       });
+
+      // Initialize "You are here" user marker
+      updateUserLocationMarker();
+
+      // Check browser GPS geolocation
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords;
+            if (latitude >= 8.5 && latitude <= 9.5 && longitude >= 38.3 && longitude <= 39.2) {
+              userCoords = { lat: latitude, lng: longitude };
+              updateUserLocationMarker();
+              renderLandmarkPreview(activeIdx);
+            }
+          },
+          () => {
+            /* Keep default central Addis location */
+          },
+          { timeout: 8000, enableHighAccuracy: true }
+        );
+      }
 
       // Invalidate sizes after layout settle to render tiles crisply
       setTimeout(() => {
