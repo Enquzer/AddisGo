@@ -9004,3 +9004,231 @@ input:checked + .slider-toggle:before {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Driver Profile Pictures & Avatars                                  */
+/* ------------------------------------------------------------------ */
+.avatar-has-img {
+  background-color: transparent !important;
+  border: 1.5px solid #cbd5e1 !important;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+.avatar-has-img .avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ------------------------------------------------------------------ */
+/* Driver Card Connect Actions (Call, Chat, WhatsApp, SMS)           */
+/* ------------------------------------------------------------------ */
+.driver-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 10px;
+}
+.driver-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.plate-pill {
+  display: inline-block;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-family: monospace;
+  font-weight: 700;
+  color: #0f172a;
+}
+.driver-eta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #0369a1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.driver-connect-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.driver-contact-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.whatsapp-btn {
+  color: #15803d !important;
+  border-color: #bbf7d0 !important;
+  background: #f0fdf4 !important;
+}
+.whatsapp-btn:hover {
+  background: #dcfce7 !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Demo Match & Simulation Controls                                  */
+/* ------------------------------------------------------------------ */
+.demo-match-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #eff6ff;
+  border: 1px dashed #93c5fd;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 12px 0;
+}
+.demo-match-hint {
+  font-size: 0.74rem;
+  color: #1e40af;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sim-btn {
+  border-style: dashed;
+  color: #475569;
+  font-size: 0.75rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pass Status Tag & QR                                               */
+/* ------------------------------------------------------------------ */
+.pass-status-tag {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: #fef3c7;
+  color: #92400e;
+  font-style: normal;
+}
+.pass-status-tag.is-live {
+  background: #dcfce7;
+  color: #166534;
+}
+
+/* ------------------------------------------------------------------ */
+/* 24/7 Safety & SOS Emergency Desk                                  */
+/* ------------------------------------------------------------------ */
+.emergency-safety-panel {
+  border-left: 4px solid #ef4444;
+}
+.emergency-title {
+  color: #991b1b !important;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.emergency-badge {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+  font-weight: 700;
+}
+.sos-call-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 14px 0 12px;
+}
+@media (max-width: 640px) {
+  .sos-call-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.sos-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  border: 1px solid #e2e8f0;
+}
+.sos-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+.sos-btn.police-btn {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+.sos-btn.police-btn:hover {
+  background: #e2e8f0;
+}
+.sos-btn.ambulance-btn {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+.sos-btn.ambulance-btn:hover {
+  background: #ffe4e6;
+}
+.sos-btn.desk-btn {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+.sos-btn.desk-btn:hover {
+  background: #dcfce7;
+}
+.sos-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.sos-copy strong {
+  display: block;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+.sos-copy small {
+  display: block;
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+.sos-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.sos-trigger-btn {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.25);
+}
+.sos-trigger-btn:hover {
+  background: #b91c1c !important;
+}
+

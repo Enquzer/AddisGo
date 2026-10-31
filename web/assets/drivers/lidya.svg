@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="lidya-bg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#ec4899" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#be185d" stop-opacity="0.4"/>
+    </radialGradient>
+    <linearGradient id="lidya-skin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#9d6742"/>
+      <stop offset="100%" stop-color="#7d4e2c"/>
+    </linearGradient>
+    <clipPath id="circle-clip-lidya">
+      <circle cx="60" cy="60" r="56"/>
+    </clipPath>
+  </defs>
+  <circle cx="60" cy="60" r="58" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+  <g clip-path="url(#circle-clip-lidya)">
+    <rect width="120" height="120" fill="url(#lidya-bg)"/>
+    <!-- Hair back -->
+    <path d="M32 40 C28 65, 30 85, 36 95 C40 85, 42 70, 42 55 Z" fill="#171210"/>
+    <path d="M88 40 C92 65, 90 85, 84 95 C80 85, 78 70, 78 55 Z" fill="#171210"/>
+    <!-- Shoulders & Outfit -->
+    <path d="M16 120 C18 90, 40 82, 60 82 C80 82, 102 90, 104 120 Z" fill="#0d3b2e"/>
+    <!-- Blouse inner -->
+    <path d="M48 86 Q60 102 72 86 L68 120 L52 120 Z" fill="#f8fafc"/>
+    <!-- Neck -->
+    <path d="M52 70 L52 88 C52 94, 68 94, 68 88 L68 70 Z" fill="#7d4e2c"/>
+    <path d="M52 74 C58 80, 62 80, 68 74 L68 79 C62 83, 58 83, 52 79 Z" fill="#673d1f" opacity="0.3"/>
+    <!-- Head -->
+    <ellipse cx="60" cy="52" rx="20" ry="24" fill="url(#lidya-skin)"/>
+    <!-- Ears & Earrings -->
+    <ellipse cx="40" cy="54" rx="3.5" ry="5.5" fill="#7d4e2c"/>
+    <ellipse cx="80" cy="54" rx="3.5" ry="5.5" fill="#7d4e2c"/>
+    <circle cx="40" cy="58" r="2.2" fill="#f59e0b"/>
+    <circle cx="80" cy="58" r="2.2" fill="#f59e0b"/>
+    <!-- Hair front / styled curls -->
+    <path d="M36 44 C34 26, 48 18, 60 18 C72 18, 86 26, 84 44 C76 34, 66 32, 60 34 C54 32, 44 34, 36 44 Z" fill="#171210"/>
+    <path d="M37 42 C44 34, 52 38, 55 45 C48 42, 42 45, 37 42 Z" fill="#221a17"/>
+    <path d="M83 42 C76 34, 68 38, 65 45 C72 42, 78 45, 83 42 Z" fill="#221a17"/>
+    <!-- Eyebrows -->
+    <path d="M45 45 Q51 41 55 45" stroke="#171210" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M65 45 Q69 41 75 45" stroke="#171210" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <!-- Eyes -->
+    <ellipse cx="49" cy="50" rx="3.5" ry="2.3" fill="#ffffff"/>
+    <circle cx="49.5" cy="50" r="1.8" fill="#171210"/>
+    <circle cx="50" cy="49.5" r="0.6" fill="#ffffff"/>
+    <!-- Eyelash accent -->
+    <path d="M46 48 Q50 47 54 49" stroke="#171210" stroke-width="1.2" fill="none"/>
+    <ellipse cx="71" cy="50" rx="3.5" ry="2.3" fill="#ffffff"/>
+    <circle cx="70.5" cy="50" r="1.8" fill="#171210"/>
+    <circle cx="71" cy="49.5" r="0.6" fill="#ffffff"/>
+    <path d="M66 49 Q70 47 74 48" stroke="#171210" stroke-width="1.2" fill="none"/>
+    <!-- Nose -->
+    <path d="M58 50 L57 59 C57 61, 63 61, 63 59 L62 50" stroke="#673d1f" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+    <!-- Lips with warm smile -->
+    <path d="M52 65 Q60 69 68 65" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <path d="M51 64 Q60 66 69 64 Q60 72 51 64 Z" fill="#a84343" opacity="0.85"/>
+  </g>
+</svg>

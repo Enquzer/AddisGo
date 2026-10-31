@@ -327,7 +327,10 @@ export default async function renderDriver(view, ctx) {
       ${request.notes ? `<p class="request-note">${icon('info', 13)} ${esc(request.notes)}</p>` : ''}
       <div class="request-actions">
         <span class="request-rider">${avatar(request.customer, 28)} ${esc(request.customer.name)}</span>
-        <button type="button" class="btn btn-sm btn-primary" data-accept="${request.id}">${icon('check', 14)} Accept ride</button>
+        <div class="request-btn-group">
+          <button type="button" class="btn btn-sm btn-ghost btn-danger-text" data-decline="${request.id}">${icon('x', 14)} Decline</button>
+          <button type="button" class="btn btn-sm btn-primary" data-accept="${request.id}">${icon('check', 14)} Accept ride</button>
+        </div>
       </div>
     </article>`;
   };
@@ -830,6 +833,16 @@ export default async function renderDriver(view, ctx) {
     }
     if (event.target.closest('#driver-refresh')) {
       await reloadAll();
+      return;
+    }
+
+    const declineBtn = event.target.closest('[data-decline]');
+    if (declineBtn) {
+      const id = Number(declineBtn.dataset.decline);
+      requests = requests.filter((r) => r.id !== id);
+      paintRequests();
+      paintRequestPreview();
+      toast('Request declined and dismissed.');
       return;
     }
 

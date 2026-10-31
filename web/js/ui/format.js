@@ -110,11 +110,27 @@ export function initials(name) {
   return parts.map((p) => p[0] || '').join('').toUpperCase() || '?';
 }
 
+export function getAvatarUrl(user) {
+  if (user?.avatar_url) return user.avatar_url;
+  if (user?.photo_url) return user.photo_url;
+  const name = String(user?.name || '').toLowerCase();
+  if (name.includes('dawit')) return 'assets/drivers/dawit.svg';
+  if (name.includes('lidya')) return 'assets/drivers/lidya.svg';
+  if (name.includes('hanna')) return 'assets/drivers/hanna.svg';
+  if (name.includes('yonas')) return 'assets/drivers/yonas.svg';
+  if (user?.role === 'driver' || user?.make_model) return 'assets/drivers/default-driver.svg';
+  return null;
+}
+
 export function avatar(user, size = 40, extraClass = '') {
   const color = /^#[0-9a-fA-F]{6}$/.test(user?.avatar_color || '') ? user.avatar_color : '#145c45';
   const badge = user?.is_verified
     ? '<span class="avatar-verified" title="Verified by AddisGo" aria-label="Verified">✓</span>'
     : '';
+  const imgUrl = getAvatarUrl(user);
+  if (imgUrl) {
+    return `<span class="avatar avatar-has-img ${extraClass}" style="--avatar-size:${size}px;" aria-label="${esc(user?.name || 'User')}"><img src="${esc(imgUrl)}" alt="${esc(user?.name || '')}" class="avatar-img" width="${size}" height="${size}" loading="lazy" />${badge}</span>`;
+  }
   return `<span class="avatar ${extraClass}" style="--avatar-size:${size}px;--avatar-color:${color}" aria-hidden="true">${esc(initials(user?.name))}${badge}</span>`;
 }
 

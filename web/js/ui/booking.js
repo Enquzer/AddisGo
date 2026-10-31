@@ -66,20 +66,29 @@ export function rideCard(booking, { role = 'customer', href = null, actions = ''
   </article>`;
 }
 
-export function driverCard(driver, { phone = null, distance = null } = {}) {
+export function driverCard(driver, { phone = null, distance = null, bookingCode = '', pickup = '' } = {}) {
   if (!driver) return '';
   const cls = vehicleClass(driver.vehicle_class);
+  const cleanPhone = phone ? phone.replace(/[^0-9]/g, '') : '';
+  const waText = encodeURIComponent(`Hi ${driver.name}, I am at ${pickup || 'pickup'} for AddisGo ride ${bookingCode}.`);
+  const smsText = encodeURIComponent(`Hi ${driver.name}, waiting at ${pickup || 'pickup'} for trip ${bookingCode}.`);
   return `<div class="driver-card">
-    ${avatar(driver, 48)}
+    ${avatar(driver, 52, 'driver-avatar')}
     <div class="driver-copy">
-      <strong>${esc(driver.name)}</strong>
+      <div class="driver-name-row">
+        <strong>${esc(driver.name)}</strong>
+        <span class="badge badge-soft tone-${cls.tone}">${icon(cls.short === 'E2' ? 'zap' : 'car', 12)} ${esc(cls.name)}</span>
+      </div>
       <span>${stars(driver.rating, { count: driver.rating_count })}</span>
-      <small>${esc(driver.make_model)} · ${esc(driver.color)} · ${esc(driver.plate)}</small>
+      <small>${esc(driver.make_model)} · ${esc(driver.color)} · <span class="plate-pill">${esc(driver.plate)}</span></small>
+      ${distance !== null ? `<div class="driver-eta">${icon('navigation', 12)} <span>${esc(km(distance))} away · Heading to pickup</span></div>` : ''}
     </div>
-    <div class="driver-side">
-      <span class="badge badge-soft tone-${cls.tone}">${icon(cls.short === 'E2' ? 'zap' : 'car', 13)} ${esc(cls.name)}</span>
-      ${distance !== null ? `<small>${esc(km(distance))} away</small>` : ''}
-      ${phone ? `<a class="btn btn-xs btn-ghost" href="tel:${esc(phone)}">${icon('phone', 13)} Call</a>` : ''}
+    <div class="driver-connect-actions">
+      ${phone ? `
+        <a class="btn btn-xs btn-ghost driver-contact-btn" href="tel:${esc(phone)}" title="Direct Phone Call">${icon('phone', 14)} <span>Call</span></a>
+        <a class="btn btn-xs btn-ghost driver-contact-btn whatsapp-btn" href="https://wa.me/${cleanPhone}?text=${waText}" target="_blank" rel="noopener noreferrer" title="Chat on WhatsApp">${icon('message', 14)} <span>WhatsApp</span></a>
+        <a class="btn btn-xs btn-ghost driver-contact-btn" href="sms:${esc(phone)}?body=${smsText}" title="Send SMS Text">${icon('mail', 14)} <span>SMS</span></a>
+      ` : ''}
     </div>
   </div>`;
 }

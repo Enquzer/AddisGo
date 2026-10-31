@@ -64,6 +64,7 @@ route('GET', '/bookings', bookings.list);
 route('POST', '/bookings', bookings.create);
 route('GET', '/bookings/:id', bookings.detail);
 route('POST', '/bookings/:id/accept', bookings.accept);
+route('POST', '/bookings/:id/auto-match', bookings.autoMatch);
 route('PATCH', '/bookings/:id/status', bookings.updateStatus);
 route('POST', '/bookings/:id/cancel', bookings.cancel);
 route('POST', '/bookings/:id/rate', bookings.rate);

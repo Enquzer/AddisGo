@@ -243,6 +243,69 @@ export async function accept(ctx) {
   return booking;
 }
 
+export async function autoMatch(ctx) {
+  const auth = requireUser(ctx);
+  const booking = getBooking(ctx.db, ctx.params.id);
+  if (!booking) throw AppError.notFound('Ride not found.');
+  if (booking.status !== 'requested') throw AppError.conflict('Ride is already matched or completed.');
+  if (booking.customer.id !== auth.id && auth.role !== 'admin') {
+    throw AppError.forbidden('Only the customer or an admin can match a driver.');
+  }
+
+  const drivers = ctx.db.all(
+    `SELECT d.*, u.name, u.phone FROM drivers d
+     JOIN users u ON u.id = d.user_id
+     WHERE d.status = 'approved' AND d.is_online = 1 AND u.status = 'active'
+       AND d.lat IS NOT NULL AND d.lng IS NOT NULL`,
+  );
+
+  let bestDriver = null;
+  let bestDist = Infinity;
+  for (const d of drivers) {
+    const active = ctx.db.get(
+      "SELECT COUNT(*) AS n FROM bookings WHERE driver_id = ? AND status IN ('accepted', 'arriving', 'in_progress')",
+      [d.id],
+    );
+    if (Number(active.n) === 0) {
+      const dist = haversineKm(booking.pickup_lat, booking.pickup_lng, d.lat, d.lng);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestDriver = d;
+      }
+    }
+  }
+
+  if (!bestDriver) {
+    const fallback = ctx.db.get(
+      `SELECT d.*, u.name, u.phone FROM drivers d
+       JOIN users u ON u.id = d.user_id
+       WHERE d.status = 'approved' AND u.status = 'active'
+       LIMIT 1`,
+    );
+    if (fallback) {
+      ctx.db.run('UPDATE drivers SET is_online = 1, lat = ?, lng = ? WHERE id = ?', [
+        booking.pickup_lat + 0.006,
+        booking.pickup_lng + 0.006,
+        fallback.id,
+      ]);
+      bestDriver = fallback;
+    }
+  }
+
+  if (!bestDriver) throw AppError.notFound('No approved drivers available.');
+
+  ctx.db.run(
+    `UPDATE bookings SET driver_id = ?, status = 'accepted', accepted_at = ?
+     WHERE id = ? AND status = 'requested'`,
+    [bestDriver.id, nowIso(), booking.id],
+  );
+
+  notify(ctx.db, booking.customer.id, 'ride', 'Driver found', `${bestDriver.name} accepted your ride and is heading to ${booking.pickup}.`);
+  notify(ctx.db, bestDriver.user_id, 'ride', 'Ride assigned', `You have been matched with ${booking.customer.name} at ${booking.pickup}.`);
+
+  return getBooking(ctx.db, booking.id) ?? throwInternal();
+}
+
 export async function updateStatus(ctx) {
   const auth = requireUser(ctx);
   const booking = getBooking(ctx.db, ctx.params.id);
@@ -250,7 +313,8 @@ export async function updateStatus(ctx) {
 
   const isAdmin = auth.role === 'admin';
   const isDriver = booking.driver ? booking.driver.user_id === auth.id : false;
-  if (!isAdmin && !isDriver) throw AppError.forbidden('Only the assigned driver can update this trip.');
+  const isCustomer = booking.customer.id === auth.id;
+  if (!isAdmin && !isDriver && !isCustomer) throw AppError.forbidden('Only the assigned driver or rider can update this trip.');
 
   const next = String(ctx.body.status ?? '').trim().toLowerCase();
   const allowed =
@@ -388,8 +452,8 @@ export async function qr(ctx) {
   const auth = requireUser(ctx);
   const booking = getBooking(ctx.db, ctx.params.id);
   if (!booking || !canView(auth, booking)) throw AppError.notFound('Ride not found.');
-  if (!['accepted', 'arriving', 'in_progress'].includes(booking.status)) {
-    throw AppError.conflict('A check-in pass is available once a driver accepts your ride.');
+  if (!['requested', 'accepted', 'arriving', 'in_progress'].includes(booking.status)) {
+    throw AppError.conflict('A check-in pass is available for active rides.');
   }
 
   const payload = `ADDISGO|booking:${booking.code}`;

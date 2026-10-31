@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="yonas-bg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#b45309" stop-opacity="0.4"/>
+    </radialGradient>
+    <linearGradient id="yonas-skin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#a06c48"/>
+      <stop offset="100%" stop-color="#805030"/>
+    </linearGradient>
+    <clipPath id="circle-clip-yonas">
+      <circle cx="60" cy="60" r="56"/>
+    </clipPath>
+  </defs>
+  <circle cx="60" cy="60" r="58" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+  <g clip-path="url(#circle-clip-yonas)">
+    <rect width="120" height="120" fill="url(#yonas-bg)"/>
+    <!-- Shoulders & polo shirt -->
+    <path d="M18 120 C20 90, 42 82, 60 82 C78 82, 100 90, 102 120 Z" fill="#0369a1"/>
+    <!-- Collar -->
+    <path d="M48 84 L60 98 L72 84 Z" fill="#0284c7"/>
+    <!-- Neck -->
+    <path d="M50 72 L50 88 C50 94, 70 94, 70 88 L70 72 Z" fill="#805030"/>
+    <!-- Head -->
+    <ellipse cx="60" cy="54" rx="22" ry="26" fill="url(#yonas-skin)"/>
+    <!-- Ears -->
+    <ellipse cx="38" cy="56" rx="4" ry="6" fill="#805030"/>
+    <ellipse cx="82" cy="56" rx="4" ry="6" fill="#805030"/>
+    <!-- Hair -->
+    <path d="M37 46 C36 32, 46 22, 60 22 C74 22, 84 32, 83 46 C80 41, 74 36, 60 36 C46 36, 40 41, 37 46 Z" fill="#181310"/>
+    <!-- Eyebrows -->
+    <path d="M44 46 Q51 43 55 46" stroke="#181310" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <path d="M65 46 Q69 43 76 46" stroke="#181310" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <!-- Glasses -->
+    <rect x="43" y="47" width="13" height="11" rx="3" fill="none" stroke="#181310" stroke-width="1.8"/>
+    <rect x="64" y="47" width="13" height="11" rx="3" fill="none" stroke="#181310" stroke-width="1.8"/>
+    <path d="M56 52 L64 52" stroke="#181310" stroke-width="1.8"/>
+    <path d="M43 51 L38 53" stroke="#181310" stroke-width="1.5"/>
+    <path d="M77 51 L82 53" stroke="#181310" stroke-width="1.5"/>
+    <!-- Eyes -->
+    <ellipse cx="49.5" cy="52.5" rx="3" ry="2" fill="#ffffff"/>
+    <circle cx="50" cy="52.5" r="1.7" fill="#181310"/>
+    <ellipse cx="70.5" cy="52.5" rx="3" ry="2" fill="#ffffff"/>
+    <circle cx="71" cy="52.5" r="1.7" fill="#181310"/>
+    <!-- Nose -->
+    <path d="M58 52 L57 61 C57 63, 63 63, 63 61 L62 52" stroke="#663e22" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+    <!-- Smile & subtle goatee -->
+    <path d="M52 67 Q60 72 68 67" stroke="#ffffff" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M51 67 Q60 73 69 67" stroke="#502510" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+    <circle cx="60" cy="74" r="2.5" fill="#241a16" opacity="0.6"/>
+  </g>
+</svg>

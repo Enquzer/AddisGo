@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="hanna-bg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#047857" stop-opacity="0.4"/>
+    </radialGradient>
+    <linearGradient id="hanna-skin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8e5a36"/>
+      <stop offset="100%" stop-color="#704223"/>
+    </linearGradient>
+    <clipPath id="circle-clip-hanna">
+      <circle cx="60" cy="60" r="56"/>
+    </clipPath>
+  </defs>
+  <circle cx="60" cy="60" r="58" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+  <g clip-path="url(#circle-clip-hanna)">
+    <rect width="120" height="120" fill="url(#hanna-bg)"/>
+    <!-- Hair back -->
+    <path d="M30 42 C26 62, 28 80, 36 90 C40 80, 42 66, 42 52 Z" fill="#140f0d"/>
+    <path d="M90 42 C94 62, 92 80, 84 90 C80 80, 78 66, 78 52 Z" fill="#140f0d"/>
+    <!-- Shoulders -->
+    <path d="M16 120 C18 90, 40 82, 60 82 C80 82, 102 90, 104 120 Z" fill="#1e3a8a"/>
+    <!-- Collar -->
+    <polygon points="60,86 48,102 60,118 72,102" fill="#ffffff"/>
+    <!-- Neck -->
+    <path d="M52 70 L52 88 C52 94, 68 94, 68 88 L68 70 Z" fill="#704223"/>
+    <!-- Head -->
+    <ellipse cx="60" cy="52" rx="20" ry="24" fill="url(#hanna-skin)"/>
+    <!-- Ears -->
+    <ellipse cx="40" cy="54" rx="3.5" ry="5.5" fill="#704223"/>
+    <ellipse cx="80" cy="54" rx="3.5" ry="5.5" fill="#704223"/>
+    <!-- Hair front -->
+    <path d="M35 44 C33 26, 48 18, 60 18 C72 18, 87 26, 85 44 C77 34, 66 32, 60 34 C54 32, 43 34, 35 44 Z" fill="#140f0d"/>
+    <!-- Eyebrows -->
+    <path d="M45 45 Q51 42 55 45" stroke="#140f0d" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M65 45 Q69 42 75 45" stroke="#140f0d" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <!-- Eyes -->
+    <ellipse cx="49" cy="50" rx="3.5" ry="2.3" fill="#ffffff"/>
+    <circle cx="49.5" cy="50" r="1.8" fill="#140f0d"/>
+    <circle cx="50" cy="49.5" r="0.6" fill="#ffffff"/>
+    <ellipse cx="71" cy="50" rx="3.5" ry="2.3" fill="#ffffff"/>
+    <circle cx="70.5" cy="50" r="1.8" fill="#140f0d"/>
+    <circle cx="71" cy="49.5" r="0.6" fill="#ffffff"/>
+    <!-- Nose -->
+    <path d="M58 50 L57 59 C57 61, 63 61, 63 59 L62 50" stroke="#5c3419" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+    <!-- Smile -->
+    <path d="M52 65 Q60 70 68 65" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <path d="M51 64 Q60 66 69 64 Q60 72 51 64 Z" fill="#b91c1c" opacity="0.8"/>
+  </g>
+</svg>

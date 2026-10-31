@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="dawit-bg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#1e3a8a" stop-opacity="0.4"/>
+    </radialGradient>
+    <linearGradient id="dawit-skin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#965f39"/>
+      <stop offset="100%" stop-color="#7a4624"/>
+    </linearGradient>
+    <clipPath id="circle-clip">
+      <circle cx="60" cy="60" r="56"/>
+    </clipPath>
+  </defs>
+  <circle cx="60" cy="60" r="58" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+  <g clip-path="url(#circle-clip)">
+    <rect width="120" height="120" fill="url(#dawit-bg)"/>
+    <!-- Shoulders & Coat -->
+    <path d="M18 120 C20 90, 42 82, 60 82 C78 82, 100 90, 102 120 Z" fill="#1e293b"/>
+    <!-- Shirt Collar -->
+    <polygon points="60,86 48,102 60,118 72,102" fill="#ffffff"/>
+    <polygon points="60,88 56,108 64,108" fill="#0d3b2e"/>
+    <!-- Neck -->
+    <path d="M50 72 L50 88 C50 94, 70 94, 70 88 L70 72 Z" fill="#7a4624"/>
+    <path d="M50 78 C56 84, 64 84, 70 78 L70 84 C64 88, 56 88, 50 84 Z" fill="#65381a" opacity="0.4"/>
+    <!-- Head -->
+    <ellipse cx="60" cy="54" rx="22" ry="26" fill="url(#dawit-skin)"/>
+    <!-- Hair -->
+    <path d="M37 48 C36 34, 46 22, 60 22 C74 22, 84 34, 83 48 C80 43, 74 38, 60 38 C46 38, 40 43, 37 48 Z" fill="#1a1412"/>
+    <ellipse cx="37" cy="46" rx="2" ry="6" fill="#1a1412"/>
+    <ellipse cx="83" cy="46" rx="2" ry="6" fill="#1a1412"/>
+    <!-- Ears -->
+    <ellipse cx="38" cy="56" rx="4" ry="6" fill="#7a4624"/>
+    <ellipse cx="82" cy="56" rx="4" ry="6" fill="#7a4624"/>
+    <!-- Eyebrows -->
+    <path d="M44 47 Q51 44 55 47" stroke="#1a1412" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <path d="M65 47 Q69 44 76 47" stroke="#1a1412" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <!-- Eyes -->
+    <ellipse cx="49" cy="52" rx="3.5" ry="2.5" fill="#ffffff"/>
+    <circle cx="49.5" cy="52" r="2" fill="#1a1412"/>
+    <circle cx="50" cy="51.5" r="0.7" fill="#ffffff"/>
+    <ellipse cx="71" cy="52" rx="3.5" ry="2.5" fill="#ffffff"/>
+    <circle cx="70.5" cy="52" r="2" fill="#1a1412"/>
+    <circle cx="71" cy="51.5" r="0.7" fill="#ffffff"/>
+    <!-- Nose -->
+    <path d="M57 52 L56 61 C56 64, 64 64, 64 61 L63 52" stroke="#65381a" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+    <!-- Mustache & Beard trimmed -->
+    <path d="M47 70 Q60 74 73 70 Q60 76 47 70 Z" fill="#241a16" opacity="0.85"/>
+    <path d="M54 75 Q60 78 66 75 Q60 80 54 75 Z" fill="#241a16" opacity="0.7"/>
+    <!-- Mouth -->
+    <path d="M52 66 Q60 71 68 66" stroke="#ffffff" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M51 66 Q60 72 69 66" stroke="#502510" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>

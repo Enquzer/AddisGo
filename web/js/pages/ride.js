@@ -886,6 +886,15 @@ async function renderRideDetail(view, ctx) {
       if (['accepted', 'arriving'].includes(status)) {
         actionButtons.push(`<button class="btn btn-ghost" data-act="show-qr">${icon('qr', 16)} Check-in pass</button>`);
       }
+      if (status === 'accepted') {
+        actionButtons.push(`<button class="btn btn-xs btn-ghost sim-btn" data-sim="arriving">${icon('navigation', 14)} Simulate: Driver arriving</button>`);
+      }
+      if (status === 'arriving') {
+        actionButtons.push(`<button class="btn btn-xs btn-ghost sim-btn" data-sim="in_progress">${icon('car', 14)} Simulate: Start trip</button>`);
+      }
+      if (status === 'in_progress') {
+        actionButtons.push(`<button class="btn btn-xs btn-ghost sim-btn" data-sim="completed">${icon('check', 14)} Simulate: Complete trip</button>`);
+      }
       if (status === 'completed' && !b.rating) {
         actionButtons.push(`<button class="btn btn-primary" data-act="rate">${icon('star', 16)} Rate your trip</button>`);
       }
@@ -916,19 +925,26 @@ async function renderRideDetail(view, ctx) {
         <div class="matching-row">
           <span class="pulse-ring" aria-hidden="true"></span>
           <div>
-            <strong>Alerting drivers nearby</strong>
-            <p>${b.scheduled_for ? `We will match a driver before ${esc(time(b.scheduled_for))}.` : 'This usually takes under 3 minutes. Keep this page open.'}</p>
+            <strong>Broadcasting to online drivers nearby…</strong>
+            <p>${b.scheduled_for ? `We will match a driver before ${esc(time(b.scheduled_for))}.` : 'Searching for approved drivers. Keep this page open or match immediately below.'}</p>
           </div>
+        </div>
+        <div class="demo-match-wrap">
+          <button type="button" class="btn btn-primary btn-sm" data-act="auto-match">
+            ${icon('zap', 15)} Match nearby driver now (instant)
+          </button>
+          <span class="demo-match-hint">${icon('info', 13)} Fast test: Pair with an approved driver immediately.</span>
         </div>
       ` : ''}
 
       ${driver && status !== 'requested' ? `
         <div class="driver-block">
-          ${driverCard(driver, { phone: b.driver_phone, distance: driver.lat && b.status !== 'completed' ? haversine(b.pickup_lat, b.pickup_lng, driver.lat, driver.lng) : null })}
-          <div class="driver-vehicle">
-            <span>${esc(driver.color || '')} ${esc(driver.make_model)}</span>
-            <span class="plate">${esc(driver.plate)}</span>
-          </div>
+          ${driverCard(driver, {
+            phone: b.driver_phone,
+            distance: driver.lat && b.status !== 'completed' ? haversine(b.pickup_lat, b.pickup_lng, driver.lat, driver.lng) : null,
+            bookingCode: b.code,
+            pickup: b.pickup,
+          })}
         </div>
       ` : ''}
 
@@ -962,7 +978,7 @@ async function renderRideDetail(view, ctx) {
   };
 
   const renderPass = (b) => {
-    const eligible = ['accepted', 'arriving', 'in_progress'].includes(b.status);
+    const eligible = ['requested', 'accepted', 'arriving', 'in_progress'].includes(b.status);
     passEl.innerHTML = `
       <div class="panel-head-row">
         <div><h2>Check-in pass</h2><p>Show this to your driver or scan it at pickup.</p></div>
@@ -970,19 +986,20 @@ async function renderRideDetail(view, ctx) {
       </div>
       ${eligible ? `
         <div class="pass-card">
-          <div class="pass-code"><span>Code</span><strong>${esc(b.code)}</strong></div>
+          <div class="pass-code">
+            <span>Trip pass code</span>
+            <strong>${esc(b.code)}</strong>
+            ${b.status === 'requested' ? '<em class="pass-status-tag">Dispatching to drivers</em>' : '<em class="pass-status-tag is-live">Ready for driver</em>'}
+          </div>
           <button type="button" class="qr-preview" data-act="show-qr" aria-label="Show QR check-in pass">
             <img src="${qrUrl(b.id)}" alt="QR code for ride ${esc(b.code)}" loading="lazy" />
           </button>
-          <p class="pass-hint">${icon('shield', 13)} The QR contains only your trip code. Drivers verify it in the app.</p>
+          <p class="pass-hint">${icon('shield', 13)} Scanned by your driver at pickup to confirm identity and trip route.</p>
         </div>
       ` : b.status === 'completed' ? `
         <div class="pass-done">${icon('check-circle', 22)} <p>Trip complete. Pass ${esc(b.code)} is now closed.</p></div>
-      ` : b.status === 'cancelled' ? `
-        <div class="pass-done">${icon('ban', 20)} <p>This ride was cancelled.</p></div>
       ` : `
-        <p class="muted pass-wait">${icon('clock', 15)} Your QR pass appears as soon as a driver accepts.</p>
-        <div class="pass-code is-muted"><span>Request code</span><strong>${esc(b.code)}</strong></div>
+        <div class="pass-done">${icon('ban', 20)} <p>This ride was cancelled.</p></div>
       `}
     `;
   };
@@ -1017,15 +1034,53 @@ async function renderRideDetail(view, ctx) {
 
   const renderSupport = (b) => {
     supportEl.innerHTML = `
-      <div class="panel-head-row">
-        <div><h2>Need help?</h2><p>Our safety desk reviews every report.</p></div>
-        ${icon('shield', 20)}
+      <div class="emergency-safety-panel">
+        <div class="panel-head-row">
+          <div>
+            <h2 class="emergency-title">${icon('shield', 20)} 24/7 Safety &amp; Emergency SOS</h2>
+            <p>Direct emergency escalation &amp; platform monitoring.</p>
+          </div>
+          <span class="badge badge-soft tone-red emergency-badge">SOS Active</span>
+        </div>
+
+        <div class="sos-call-grid">
+          <a class="sos-btn police-btn" href="tel:991" title="Call Ethiopian Federal Police">
+            <span class="sos-icon">${icon('phone', 18)}</span>
+            <div class="sos-copy">
+              <strong>991 Police</strong>
+              <small>Federal Emergency</small>
+            </div>
+          </a>
+          <a class="sos-btn ambulance-btn" href="tel:907" title="Call Red Cross Ambulance">
+            <span class="sos-icon">${icon('navigation', 18)}</span>
+            <div class="sos-copy">
+              <strong>907 Ambulance</strong>
+              <small>Red Cross Medical</small>
+            </div>
+          </a>
+          <a class="sos-btn desk-btn" href="tel:+251911000001" title="Call AddisGo 24/7 Safety Desk">
+            <span class="sos-icon">${icon('shield', 18)}</span>
+            <div class="sos-copy">
+              <strong>Safety Desk</strong>
+              <small>+251 911 000 001</small>
+            </div>
+          </a>
+        </div>
+
+        <div class="sos-actions">
+          <button type="button" class="btn btn-danger btn-sm sos-trigger-btn" data-act="trigger-sos">
+            ${icon('ban', 15)} Broadcast SOS Alert
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" data-act="share-trip">
+            ${icon('navigation', 14)} Share Trip Details
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" data-act="report">
+            ${icon('flag', 14)} Flag an Issue
+          </button>
+        </div>
+
+        <p class="fine-print">${icon('info', 12)} Triggering SOS alerts the AddisGo safety desk with your live trip coordinates, driver name (${esc(b.driver?.name || 'Pending')}), vehicle plate (${esc(b.driver?.plate || 'Pending')}), and pass code ${esc(b.code)}.</p>
       </div>
-      <div class="support-actions">
-        <button class="btn btn-ghost btn-sm" data-act="report">${icon('flag', 15)} Report an issue</button>
-        <a class="btn btn-ghost btn-sm" href="mailto:support@addisgo.et?subject=${encodeURIComponent(`Ride ${b.code}`)}">${icon('mail', 15)} Email support</a>
-      </div>
-      <p class="fine-print">Include trip ${esc(b.code)} in any message so we can find your ride quickly.</p>
     `;
   };
 
@@ -1048,10 +1103,45 @@ async function renderRideDetail(view, ctx) {
   };
 
   liveEl.addEventListener('click', async (event) => {
+    const simBtn = event.target.closest('[data-sim]');
+    if (simBtn) {
+      const nextStatus = simBtn.dataset.sim;
+      await withBusy(simBtn, async () => {
+        try {
+          const updated = await api(`/bookings/${booking.id}/status`, { method: 'PATCH', body: { status: nextStatus } });
+          booking = updated;
+          renderAll(updated, true);
+          toast(nextStatus === 'arriving' ? 'Driver marked as arriving.' : nextStatus === 'in_progress' ? 'Trip in progress.' : 'Trip completed.');
+        } catch (error) {
+          toastError(error);
+        }
+      });
+      return;
+    }
+
+    if (event.target.closest('[data-act="open-chat"]')) {
+      chatEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      chatEl?.querySelector('input, textarea')?.focus();
+      return;
+    }
+
     const btn = event.target.closest('[data-act]');
     if (!btn) return;
     const act = btn.dataset.act;
 
+    if (act === 'auto-match') {
+      await withBusy(btn, async () => {
+        try {
+          const updated = await api(`/bookings/${booking.id}/auto-match`, { method: 'POST' });
+          booking = updated;
+          renderAll(updated, true);
+          toast('Driver matched! Your driver is heading to the pickup point.');
+        } catch (error) {
+          toastError(error);
+        }
+      });
+      return;
+    }
     if (act === 'show-qr') {
       showQr(booking);
       return;
@@ -1161,26 +1251,81 @@ async function renderRideDetail(view, ctx) {
   });
 
   supportEl.addEventListener('click', async (event) => {
-    if (!event.target.closest('[data-act="report"]')) return;
-    const reason = await promptModal({
-      title: 'Report a safety issue',
-      eyebrow: `Ride ${booking.code}`,
-      label: 'What went wrong?',
-      placeholder: 'Unsafe driving, harassment, wrong route…',
-      confirmLabel: 'Send to safety desk',
-      multiline: true,
-      maxLength: 200,
-      hint: '3–200 characters. Our team reads every report.',
-    });
-    if (!reason) return;
-    try {
-      await api('/reports', {
-        method: 'POST',
-        body: { target_type: 'booking', target_id: booking.id, reason: reason.trim(), detail: `Ride ${booking.code}` },
+    const sosBtn = event.target.closest('[data-act="trigger-sos"]');
+    if (sosBtn) {
+      const ok = await confirmModal({
+        title: '🚨 Dispatch Emergency SOS Alert?',
+        message: `This will dispatch an urgent high-priority alert to the AddisGo 24/7 Safety Desk with live GPS coordinates, vehicle plate (${booking.driver?.plate || 'Pending'}), and driver details for trip ${booking.code}.`,
+        confirmLabel: '🚨 Yes, Dispatch SOS',
+        cancelLabel: 'Cancel',
+        danger: true,
       });
-      toast('Report sent. Our safety desk will review it.');
-    } catch (error) {
-      toastError(error);
+      if (!ok) return;
+      try {
+        await api('/reports', {
+          method: 'POST',
+          body: {
+            target_type: 'booking',
+            target_id: booking.id,
+            reason: '🚨 SOS Emergency Alert Triggered',
+            detail: `URGENT SOS on trip ${booking.code} (${booking.pickup} → ${booking.dropoff}). Driver: ${booking.driver?.name || 'Unassigned'} (${booking.driver?.plate || 'No plate'}). Rider: ${booking.customer?.name || 'Customer'}.`,
+          },
+        });
+        toast('🚨 Emergency SOS alert sent to safety desk! Call 991 if you are in immediate danger.', { type: 'error' });
+      } catch (error) {
+        toastError(error);
+      }
+      return;
+    }
+
+    const shareBtn = event.target.closest('[data-act="share-trip"]');
+    if (shareBtn) {
+      const shareText = `I'm on an AddisGo ride (${booking.pickup} → ${booking.dropoff}). Trip pass code: ${booking.code}. Driver: ${booking.driver?.name || 'Assigned'} (${booking.driver?.plate || 'Vehicle'}). Live trip link: ${window.location.href}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: `AddisGo Ride ${booking.code}`,
+            text: shareText,
+            url: window.location.href,
+          });
+          return;
+        } catch {}
+      }
+      try {
+        await navigator.clipboard.writeText(shareText);
+        toast('Trip details copied to clipboard. Send to your family or emergency contacts.', { type: 'info' });
+      } catch {
+        promptModal({
+          title: 'Share Trip Details',
+          label: 'Copy this text for your emergency contacts:',
+          value: shareText,
+          confirmLabel: 'Done',
+        });
+      }
+      return;
+    }
+
+    if (event.target.closest('[data-act="report"]')) {
+      const reason = await promptModal({
+        title: 'Report a safety issue',
+        eyebrow: `Ride ${booking.code}`,
+        label: 'What went wrong?',
+        placeholder: 'Unsafe driving, harassment, wrong route…',
+        confirmLabel: 'Send to safety desk',
+        multiline: true,
+        maxLength: 200,
+        hint: '3–200 characters. Our team reads every report.',
+      });
+      if (!reason) return;
+      try {
+        await api('/reports', {
+          method: 'POST',
+          body: { target_type: 'booking', target_id: booking.id, reason: reason.trim(), detail: `Ride ${booking.code}` },
+        });
+        toast('Report sent. Our safety desk will review it.');
+      } catch (error) {
+        toastError(error);
+      }
     }
   });
 
