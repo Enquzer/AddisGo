@@ -16,7 +16,7 @@ const POPULAR_AREAS = [
     lat: 8.9915,
     lng: 38.7835,
     icon: 'coffee',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/0/0d/Aeropuerto_Internacional_Bole_2022_3.jpg',
+    imageUrl: '/assets/landmarks/bole_japan.jpg',
   },
   {
     name: 'Kazanchis',
@@ -30,7 +30,7 @@ const POPULAR_AREAS = [
     lat: 9.0142,
     lng: 38.7625,
     icon: 'music',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/en/a/ac/African_Hall_Addis_Abeba.jpg',
+    imageUrl: '/assets/landmarks/kazanchis.jpg',
   },
   {
     name: 'Meskel Square',
@@ -44,7 +44,7 @@ const POPULAR_AREAS = [
     lat: 9.0108,
     lng: 38.7618,
     icon: 'compass',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/d/d5/Meskal_Square_%2811237676556%29.jpg',
+    imageUrl: '/assets/landmarks/meskel.jpg',
   },
   {
     name: 'Piazza / Arada',
@@ -58,7 +58,7 @@ const POPULAR_AREAS = [
     lat: 9.0345,
     lng: 38.7516,
     icon: 'sparkle',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/b/b7/Katedr%C3%A1la_sv._Ji%C5%99%C3%AD.jpg',
+    imageUrl: '/assets/landmarks/piassa.jpg',
   },
   {
     name: 'Sarbet',
@@ -72,7 +72,7 @@ const POPULAR_AREAS = [
     lat: 9.0012,
     lng: 38.7365,
     icon: 'shield',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/en/8/84/African_Union_Conference_Centre_building.jpg',
+    imageUrl: '/assets/landmarks/sarbet.jpg',
   },
   {
     name: 'Bole Medhanialem',
@@ -86,7 +86,7 @@ const POPULAR_AREAS = [
     lat: 8.9953,
     lng: 38.7889,
     icon: 'map-pin',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/1/1d/Bole_Medhanealem_Churcn.jpg',
+    imageUrl: '/assets/landmarks/bole_medhanialem.jpg',
   },
   {
     name: 'Entoto Park Ridge',
@@ -100,7 +100,7 @@ const POPULAR_AREAS = [
     lat: 9.0732,
     lng: 38.7654,
     icon: 'leaf',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/c/c1/ET_Addis_asv2018-01_img16_Entoto.jpg',
+    imageUrl: '/assets/landmarks/entoto.jpg',
   },
   {
     name: 'Bole Atlas',
@@ -114,7 +114,7 @@ const POPULAR_AREAS = [
     lat: 8.9985,
     lng: 38.7780,
     icon: 'sparkle',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Addis_in_night.jpg',
+    imageUrl: '/assets/landmarks/atlas.jpg',
   },
   {
     name: 'Mexico',
@@ -128,7 +128,7 @@ const POPULAR_AREAS = [
     lat: 9.0115,
     lng: 38.7450,
     icon: 'navigation',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/87/Commercial_Bank_of_Ethiopia_CBE-HEAD_OFFICE.jpg',
+    imageUrl: '/assets/landmarks/mexico.jpg',
   },
   {
     name: '4 Kilo',
@@ -142,7 +142,7 @@ const POPULAR_AREAS = [
     lat: 9.0340,
     lng: 38.7620,
     icon: 'bookmark',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/80/Ethiopian_National_Museum_in_Addis_Ababa.jpg',
+    imageUrl: '/assets/landmarks/4kilo.jpg',
   },
   {
     name: 'Gerji',
@@ -156,7 +156,7 @@ const POPULAR_AREAS = [
     lat: 8.9950,
     lng: 38.8300,
     icon: 'map-pin',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/3/3d/Addis_Ababa_City_view.jpg',
+    imageUrl: '/assets/landmarks/gerji.jpg',
   },
   {
     name: '22 Mazoria',
@@ -170,7 +170,7 @@ const POPULAR_AREAS = [
     lat: 9.0200,
     lng: 38.7880,
     icon: 'zap',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/3/3d/Addis_Ababa_City_view.jpg',
+    imageUrl: '/assets/landmarks/22mazoria.jpg',
   },
 ];
 
@@ -1141,7 +1141,7 @@ export default async function renderLanding(view, ctx = {}) {
     previewContainer.innerHTML = `
       <article class="smart-spotlight-card tone-${esc(area.tone)}">
         <div class="spotlight-media-wrap">
-          <img src="${esc(area.imageUrl || '/assets/home/city.jpg')}" alt="${esc(area.name)}" class="spotlight-media-img" loading="lazy" onerror="this.onerror=null;this.src='/assets/home/city.jpg';" />
+          <img src="${esc(area.imageUrl || '/assets/home/city.jpg')}" alt="${esc(area.name)}" class="spotlight-media-img" loading="eager" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='/assets/home/city.jpg';" />
           <div class="spotlight-media-overlay">
             <span class="spotlight-badge">${icon(area.icon || 'map-pin', 12)} ${esc(area.subcity)}</span>
             <span class="spotlight-fare-pill">${icon('wallet', 12)} ${esc(area.fareEstimate)}</span>
