@@ -1,0 +1,31 @@
+[package]
+name = "addisgo"
+version = "1.0.0"
+edition = "2021"
+description = "AddisGo — city rides, guides and small-group tours for Addis Ababa"
+
+[dependencies]
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "compression-gzip", "set-header"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
+argon2 = "0.5"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

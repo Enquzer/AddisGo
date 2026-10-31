@@ -1,0 +1,28 @@
+=====================================================================
+                    ADDISGO - HOW TO RUN
+=====================================================================
+
+Zero installation or configuration needed! Everything is self-contained.
+
+HOW TO START:
+1. Double-click "START_ADDISGO.bat" (on Windows).
+2. Your default web browser will automatically open to:
+   http://localhost:3003
+
+That's it!
+
+DEMO LOGIN CREDENTIALS:
+- Admin Portal:  admin@addisgo.et  /  Admin123!
+- Rider Account: rider@addisgo.et  /  Rider123!
+- Driver App:    dawit@addisgo.et  /  Driver123!
+
+KEY FEATURES:
+- Dual-Screen Foldable Phone showcase with Google Maps Navigation
+- Real Addis Ababa Landmark Index & Ge'ez audio pronunciation guides
+- Small-Group Guided City Tours & live traveler coordination
+- Ride Sharing with 50% fare splitting
+- Airport Fixed-Fare Dispatch & Contactless QR Safety Pass
+
+TO STOP:
+Close the command prompt window or press Ctrl+C.
+=====================================================================

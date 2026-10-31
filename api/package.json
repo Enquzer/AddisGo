@@ -1,0 +1,22 @@
+{
+  "name": "addisgo-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AddisGo API — city rides, guides and small-group tours for Addis Ababa",
+  "type": "module",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node tests/smoke.js",
+    "test:ui": "node tests/browser.js",
+    "check": "node tests/syntax.js"
+  },
+  "dependencies": {
+    "nodemailer": "^10.3.1",
+    "qrcode-generator": "2.0.4"
+  }
+}

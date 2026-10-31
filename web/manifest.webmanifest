@@ -1,0 +1,17 @@
+{
+  "name": "AddisGo — City rides & tours",
+  "short_name": "AddisGo",
+  "description": "Electric city rides, trusted local guides and small-group tours across Addis Ababa.",
+  "start_url": "/#/",
+  "display": "standalone",
+  "background_color": "#fbf7ef",
+  "theme_color": "#0d3b2e",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

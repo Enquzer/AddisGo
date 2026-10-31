@@ -1,0 +1,30 @@
+# Runtime data (database + generated signing secret)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.db-journal
+data/jwt_secret
+data/emails.log
+data/uploads/
+.env
+
+# Large binaries & archives
+*.zip
+bin/
+
+# Dependencies
+node_modules/
+api/node_modules/
+
+# Test artifacts
+api/tests/.browser-report.json
+*.log
+
+# Rust reference build output
+server/target/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
