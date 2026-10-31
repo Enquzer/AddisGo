@@ -4016,16 +4016,18 @@ img, svg {
 }
 .footer-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
-  gap: 48px;
+  grid-template-columns: 2.2fr 1fr 1fr 1.25fr 1.05fr;
+  gap: 28px;
   margin-bottom: 40px;
+  align-items: start;
 }
+.footer-brand-col p,
 .footer-about p {
   font-size: 0.9rem;
   color: var(--text-secondary);
-  line-height: 1.6;
-  margin: 14px 0 16px 0;
-  max-width: 360px;
+  line-height: 1.5;
+  margin: 12px 0 14px 0;
+  max-width: 320px;
 }
 .footer-contact {
   font-size: 0.85rem;
@@ -6036,10 +6038,6 @@ input:checked + .slider-toggle:before {
   }
   .compare-grid {
     grid-template-columns: 1fr;
-  }
-  .footer-grid {
-    grid-template-columns: 1fr 1fr;
-    gap: 36px;
   }
 }
 
