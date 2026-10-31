@@ -3,6 +3,7 @@ import { state } from '../store.js';
 import { icon, logoMark } from '../ui/icons.js';
 import { esc, money, dateTime, minutes } from '../ui/format.js';
 import { themeImage } from '../ui/booking.js';
+import { fetchStreetRoute } from '../ui/map.js';
 
 const POPULAR_AREAS = [
   {
@@ -1075,6 +1076,7 @@ export default async function renderLanding(view, ctx = {}) {
   let userCoords = { lat: 9.0108, lng: 38.7618 }; // Default to central Meskel Square / Bole corridor
   let userMarker = null;
   let userGuideLine = null;
+  let userGuideLineHalo = null;
 
   const calcStraightDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371;
@@ -1129,12 +1131,13 @@ export default async function renderLanding(view, ctx = {}) {
     }, 60);
   };
 
-  const updateUserLocationMarker = () => {
+  const updateUserLocationMarker = async () => {
     if (!leafletMap || typeof window.L === 'undefined') return;
     const L = window.L;
     const activeArea = POPULAR_AREAS[activeIdx] || POPULAR_AREAS[0];
-    const distKm = calcStraightDistance(userCoords.lat, userCoords.lng, activeArea.lat, activeArea.lng);
-    const estMin = Math.max(3, Math.round(distKm * 2.5));
+    const straightDist = calcStraightDistance(userCoords.lat, userCoords.lng, activeArea.lat, activeArea.lng);
+    let distKm = straightDist;
+    let estMin = Math.max(3, Math.round(distKm * 2.5));
 
     const hereHtml = `
       <div class="user-here-pulse-wrap" title="You are here (Click to center)">
@@ -1144,7 +1147,7 @@ export default async function renderLanding(view, ctx = {}) {
         </div>
         <div class="user-here-callout">
           <span class="here-tag">You are here</span>
-          <span class="here-dist">${distKm} km to ${esc(activeArea.name)} (~${estMin} min)</span>
+          <span class="here-dist" id="here-dist-text">${distKm} km to ${esc(activeArea.name)} (~${estMin} min)</span>
         </div>
       </div>
     `;
@@ -1170,23 +1173,48 @@ export default async function renderLanding(view, ctx = {}) {
       });
     }
 
-    if (userGuideLine) {
-      leafletMap.removeLayer(userGuideLine);
-      userGuideLine = null;
-    }
-    userGuideLine = L.polyline(
-      [
-        [userCoords.lat, userCoords.lng],
-        [activeArea.lat, activeArea.lng],
-      ],
-      {
-        color: '#10b981',
-        weight: 3,
-        dashArray: '5, 8',
-        opacity: 0.85,
-        lineCap: 'round',
+    // Fetch actual on-ground driving road navigation path following street turns and curves
+    try {
+      const routeData = await fetchStreetRoute(userCoords.lat, userCoords.lng, activeArea.lat, activeArea.lng);
+      if (routeData?.points?.length > 1) {
+        if (userGuideLineHalo) {
+          leafletMap.removeLayer(userGuideLineHalo);
+          userGuideLineHalo = null;
+        }
+        if (userGuideLine) {
+          leafletMap.removeLayer(userGuideLine);
+          userGuideLine = null;
+        }
+
+        userGuideLineHalo = L.polyline(routeData.points, {
+          color: '#34d399',
+          weight: 7,
+          opacity: 0.35,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }).addTo(leafletMap);
+
+        userGuideLine = L.polyline(routeData.points, {
+          color: '#059669',
+          weight: 3.5,
+          dashArray: '6, 8',
+          opacity: 0.95,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }).addTo(leafletMap);
+
+        const hereDistEl = view.querySelector('#here-dist-text');
+        if (hereDistEl) {
+          hereDistEl.textContent = `${routeData.distance_km} km to ${activeArea.name} (~${routeData.duration_min} min drive)`;
+        }
+        const spotDistEl = view.querySelector('#spotlight-dist-val');
+        if (spotDistEl) {
+          spotDistEl.innerHTML = `<strong>${routeData.distance_km} km</strong> driving route (~${routeData.duration_min} min)`;
+        }
       }
-    ).addTo(leafletMap);
+    } catch {
+      /* fallback */
+    }
   };
 
   btnLayerStreet?.addEventListener('click', () => setLayer('street'));
@@ -1228,8 +1256,8 @@ export default async function renderLanding(view, ctx = {}) {
             <div class="spotlight-title-group">
               <h3>${esc(area.name)} <span class="spotlight-geez">${esc(area.amharic)}</span></h3>
             </div>
-            <div class="spotlight-distance-pill" title="Estimated distance from your location">
-              ${icon('navigation', 12)} <span><strong>${distKm} km</strong> from you (~${estMin} min)</span>
+            <div class="spotlight-distance-pill" title="Actual on-ground driving distance from your location">
+              ${icon('car', 12)} <span id="spotlight-dist-val"><strong>${distKm} km</strong> driving route (~${estMin} min)</span>
             </div>
           </div>
 
@@ -1304,25 +1332,61 @@ export default async function renderLanding(view, ctx = {}) {
       // Default to actual Street Map
       setLayer('street');
 
-      // Connected City Transit Corridors Line
-      const routePoints = [
-        [9.0732, 38.7654], // Entoto
+      // Connected City Transit Corridors Line (Real on-ground driving routes)
+      const corridorStops = [
+        [9.0732, 38.7654], // Entoto Ridge
         [9.0345, 38.7516], // Piassa
-        [9.0142, 38.7625], // Kazanchis
         [9.0108, 38.7618], // Meskel Sq
         [9.0012, 38.7365], // Sarbet
-        [9.0108, 38.7618], // back to Meskel
+        [9.0108, 38.7618], // Meskel Sq
+        [9.0142, 38.7625], // Kazanchis
         [8.9985, 38.7780], // Atlas
         [8.9953, 38.7889], // Bole Medhanialem
         [8.9915, 38.7835], // Bole Japan
       ];
-      L.polyline(routePoints, {
-        color: '#2563eb',
-        weight: 3.5,
-        opacity: 0.75,
-        dashArray: '6, 8',
-        lineCap: 'round',
-      }).addTo(leafletMap);
+
+      let transitPolyline = null;
+      let transitHalo = null;
+
+      const loadTransitCorridors = async () => {
+        try {
+          const legPromises = [];
+          for (let i = 0; i < corridorStops.length - 1; i += 1) {
+            const [lat1, lng1] = corridorStops[i];
+            const [lat2, lng2] = corridorStops[i + 1];
+            legPromises.push(fetchStreetRoute(lat1, lng1, lat2, lng2));
+          }
+          const legs = await Promise.all(legPromises);
+          const allRoadPoints = [];
+          for (const leg of legs) {
+            if (leg?.points) allRoadPoints.push(...leg.points);
+          }
+          if (allRoadPoints.length > 1) {
+            if (transitHalo) leafletMap.removeLayer(transitHalo);
+            if (transitPolyline) leafletMap.removeLayer(transitPolyline);
+
+            transitHalo = L.polyline(allRoadPoints, {
+              color: '#60a5fa',
+              weight: 6,
+              opacity: 0.35,
+              lineCap: 'round',
+              lineJoin: 'round',
+            }).addTo(leafletMap);
+
+            transitPolyline = L.polyline(allRoadPoints, {
+              color: '#2563eb',
+              weight: 3.5,
+              opacity: 0.88,
+              dashArray: '6, 8',
+              lineCap: 'round',
+              lineJoin: 'round',
+            }).addTo(leafletMap);
+          }
+        } catch {
+          /* keep fallback */
+        }
+      };
+      loadTransitCorridors();
 
       // Add pins with small logo icons on mentioned spots
       POPULAR_AREAS.forEach((area, idx) => {
