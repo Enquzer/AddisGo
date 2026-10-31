@@ -7535,3 +7535,124 @@ input:checked + .slider-toggle:before {
   font-size: 0.85rem;
 }
 
+/* Global Left-Side Docked Pill & Facebook-Style Overlay Window */
+.chat-dock-pill.is-left {
+  left: 24px;
+  right: auto;
+  bottom: 24px;
+}
+
+.chat-container.is-overlay.is-left {
+  left: 24px;
+  right: auto;
+  bottom: 24px;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  height: 520px;
+  max-height: calc(100vh - 80px);
+}
+
+.chat-container.is-maximized {
+  width: 520px !important;
+  height: 640px !important;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 40px);
+}
+
+.chat-channel-select {
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  outline: none;
+  max-width: 180px;
+}
+.chat-channel-select option {
+  background: #00114B;
+  color: #ffffff;
+}
+
+.chat-loc-menu {
+  position: absolute;
+  bottom: 56px;
+  left: 12px;
+  right: 12px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 17, 75, 0.18);
+  padding: 8px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: slideUpChat 0.15s ease;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.chat-loc-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0f172a;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 4px;
+}
+
+.chat-loc-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: #64748b;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.chat-loc-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #334155;
+  transition: background 0.15s ease;
+}
+.chat-loc-opt:hover {
+  background: #f8fafc;
+  color: #0284c7;
+}
+.chat-loc-opt small {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 0.7rem;
+}
+
+@media (max-width: 640px) {
+  .chat-dock-pill.is-left {
+    left: 14px;
+    bottom: 74px; /* above mobile bottom nav */
+  }
+  .chat-container.is-overlay.is-left {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 85vh !important;
+    border-radius: 20px 20px 0 0 !important;
+  }
+}
+

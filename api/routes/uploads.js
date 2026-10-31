@@ -19,7 +19,7 @@ const MIME_TO_EXT = {
   'video/webm': '.webm',
 };
 
-const MAX_IMAGE_BYTES = 2.5 * 1024 * 1024; // 2.5MB
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB to accommodate direct local uploads from admin computer
 const MAX_VIDEO_BYTES = 8 * 1024 * 1024;   // 8MB
 
 /**
@@ -28,8 +28,8 @@ const MAX_VIDEO_BYTES = 8 * 1024 * 1024;   // 8MB
 export async function uploadMedia(ctx) {
   const auth = requireUser(ctx);
 
-  if (!ctx.limiter.allow(`upload:${auth.id}`, 15, 3600000)) {
-    throw AppError.tooMany('Upload limit reached. You can share up to 15 media items per hour.');
+  if (auth.role !== 'admin' && !ctx.limiter.allow(`upload:${auth.id}`, 30, 3600000)) {
+    throw AppError.tooMany('Upload limit reached. You can share up to 30 media items per hour.');
   }
 
   const rawData = String(ctx.body?.data ?? '').trim();

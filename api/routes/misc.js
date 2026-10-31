@@ -121,3 +121,121 @@ export async function subscribeNewsletter(ctx) {
 
   return { ok: true, message: 'Subscribed successfully! You will receive upcoming Addis city updates & tours.' };
 }
+
+export async function globalChatChannels(ctx) {
+  const auth = requireUser(ctx);
+  const channels = [];
+
+  // 1. Default Community / Main City Tour Channel
+  const firstTour = ctx.db.get("SELECT id, title FROM tours WHERE status = 'upcoming' ORDER BY id ASC LIMIT 1");
+  channels.push({
+    id: `tour-${firstTour ? firstTour.id : 1}`,
+    room_type: 'tour',
+    room_id: firstTour ? firstTour.id : 1,
+    title: firstTour ? `${firstTour.title} (City Group)` : 'Addis Community Tour Chat',
+    kind: 'tour',
+    badge: 'Community',
+  });
+
+  // 2. Active Ride if any
+  const ride = ctx.db.get(
+    `SELECT b.id, b.status, u.name AS rider_name, d_user.name AS driver_name
+     FROM bookings b
+     JOIN users u ON u.id = b.customer_id
+     LEFT JOIN drivers d ON d.id = b.driver_id
+     LEFT JOIN users d_user ON d_user.id = d.user_id
+     WHERE (b.customer_id = ? OR b.driver_id = (SELECT id FROM drivers WHERE user_id = ?))
+       AND b.status IN ('accepted', 'arriving', 'in_progress')
+     ORDER BY b.id DESC LIMIT 1`,
+    [auth.id, auth.id],
+  );
+  if (ride) {
+    const isCustomer = auth.role === 'customer' || auth.role === 'admin';
+    const partnerName = isCustomer ? (ride.driver_name || 'Your Driver') : ride.rider_name;
+    channels.unshift({
+      id: `ride-${ride.id}`,
+      room_type: 'ride',
+      room_id: ride.id,
+      title: `Active Ride with ${partnerName}`,
+      kind: 'ride',
+      badge: 'Live Trip',
+    });
+  }
+
+  // 3. User's joined tours
+  const userTours = ctx.db.all(
+    `SELECT t.id, t.title FROM tours t
+     JOIN tour_members tm ON tm.tour_id = t.id
+     WHERE tm.user_id = ? AND t.status = 'upcoming' AND t.id != ?
+     ORDER BY t.starts_at ASC LIMIT 5`,
+    [auth.id, firstTour ? firstTour.id : 1],
+  );
+  for (const t of userTours) {
+    channels.push({
+      id: `tour-${t.id}`,
+      room_type: 'tour',
+      room_id: t.id,
+      title: t.title,
+      kind: 'tour',
+      badge: 'Tour',
+    });
+  }
+
+  return { channels };
+}
+
+export async function globalChatGet(ctx) {
+  const auth = requireUser(ctx);
+  let roomType = String(ctx.query.get('room_type') || 'tour').toLowerCase();
+  let roomId = Number(ctx.query.get('room_id') || 1);
+
+  if (!['tour', 'ride'].includes(roomType) || !Number.isInteger(roomId) || roomId <= 0) {
+    roomType = 'tour';
+    roomId = 1;
+  }
+
+  const { tourChatMessages, rideChatMessages } = await import('../lib/db.js');
+  const messages = roomType === 'ride'
+    ? rideChatMessages(ctx.db, roomId, auth.id)
+    : tourChatMessages(ctx.db, roomId, auth.id);
+
+  return { messages, room_type: roomType, room_id: roomId };
+}
+
+export async function globalChatPost(ctx) {
+  const auth = requireUser(ctx);
+  if (!ctx.limiter.allow(`chat:${auth.id}`, 25, 60000)) {
+    throw AppError.tooMany('You are sending messages too quickly.');
+  }
+
+  const body = String(ctx.body?.body ?? '').trim();
+  if (!body) throw AppError.bad('Message cannot be empty.');
+  if (charLen(body) > 2000) throw AppError.bad('Messages must be 2,000 characters or fewer.');
+
+  let roomType = String(ctx.body?.room_type || 'tour').toLowerCase();
+  let roomId = Number(ctx.body?.room_id || 1);
+
+  if (!['tour', 'ride'].includes(roomType) || !Number.isInteger(roomId) || roomId <= 0) {
+    roomType = 'tour';
+    roomId = 1;
+  }
+
+  const created = ctx.db.run(
+    'INSERT INTO messages (room_type, room_id, user_id, body, created_at) VALUES (?, ?, ?, ?, ?)',
+    [roomType, roomId, auth.id, body, nowIso()],
+  );
+
+  const { publicUser } = await import('../lib/db.js');
+  const user = publicUser(ctx.db, auth.id);
+
+  return {
+    id: created.lastInsertRowid,
+    room_type: roomType,
+    room_id: roomId,
+    user_id: auth.id,
+    body,
+    is_own: true,
+    user,
+    created_at: nowIso(),
+  };
+}

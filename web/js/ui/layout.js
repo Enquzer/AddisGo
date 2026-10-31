@@ -5,6 +5,7 @@ import { api } from '../api.js';
 import { state, logout } from '../store.js';
 import { toast, toastError } from './toast.js';
 import { createPoller } from './poll.js';
+import { mountGlobalOverlayChat } from './chat.js';
 
 const NAV = {
   guest: [
@@ -162,7 +163,11 @@ export function renderShell() {
   `;
 
   const cleanups = [];
-  if (user) cleanups.push(mountAccountMenus());
+  if (user) {
+    cleanups.push(mountAccountMenus());
+    const chatCleanup = mountGlobalOverlayChat(user);
+    if (chatCleanup) cleanups.push(chatCleanup);
+  }
   cleanups.push(mountNotifications());
   const navHandler = on(app, '[data-nav]', 'click', () => {
     closePanels();

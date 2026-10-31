@@ -81,6 +81,11 @@ route('POST', '/tours/:id/cancel', tours.cancel);
 route('GET', '/tours/:id/messages', tours.messagesGet);
 route('POST', '/tours/:id/messages', tours.messagesPost);
 
+// Global Overlay & Group Chat
+route('GET', '/chat/channels', misc.globalChatChannels);
+route('GET', '/chat/messages', misc.globalChatGet);
+route('POST', '/chat/messages', misc.globalChatPost);
+
 // Admin CRM
 route('GET', '/admin/overview', admin.overview);
 route('GET', '/admin/drivers', admin.drivers);

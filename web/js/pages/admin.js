@@ -127,19 +127,19 @@ function selectField({ label, name, value, options, hint = '', wide = false }) {
   </label>`;
 }
 
-function photoAttachField({ label = 'Photo attachment', name = 'image_url', value = '', hint = 'Upload a photo or paste an image URL.' }) {
+function photoAttachField({ label = 'Photo attachment', name = 'image_url', value = '', hint = 'Upload from computer or paste an image URL.' }) {
   return `<div class="field field-wide photo-attach-field">
     <span class="field-label">${esc(label)}</span>
     <div class="photo-attach-row">
-      <div class="photo-preview-box" data-preview-box>
-        ${value ? `<img src="${esc(value)}" alt="Preview" class="photo-preview-img" /><button type="button" class="photo-remove-btn" data-remove-photo title="Remove photo" aria-label="Remove photo">✕</button>` : `<span class="photo-placeholder">${icon('image', 22)}<span>No photo</span></span>`}
+      <div class="photo-preview-box" data-preview-box tabindex="0" role="button" aria-label="Upload photo from computer" title="Click to choose a photo from your computer or drag & drop">
+        ${value ? `<img src="${esc(value)}" alt="Preview" class="photo-preview-img" /><button type="button" class="photo-remove-btn" data-remove-photo title="Remove photo" aria-label="Remove photo">✕</button>` : `<span class="photo-placeholder">${icon('image', 22)}<span>Upload from computer</span><small style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;">or drag &amp; drop</small></span>`}
       </div>
       <div class="photo-inputs">
         <div class="photo-btn-group">
-          <label class="btn btn-sm btn-outline photo-upload-btn">
-            ${icon('upload', 14)} Attach photo
-            <input type="file" accept="image/jpeg,image/png,image/webp" data-photo-file style="display:none;" />
-          </label>
+          <button type="button" class="btn btn-sm btn-primary photo-upload-btn" data-photo-btn>
+            ${icon('upload', 14)} Choose photo from computer
+          </button>
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/*" data-photo-file style="display:none;" />
           <span class="field-hint" style="margin:0;">${esc(hint)}</span>
         </div>
         <input type="url" name="${name}" value="${esc(value)}" placeholder="Or paste image URL (https://...)" class="field-input photo-url-input" data-photo-url />
@@ -182,6 +182,7 @@ function readFileAsOptimizedDataUrl(file) {
 
 function setupPhotoAttachment(form, initialUrl = '') {
   const fileInput = form.querySelector('[data-photo-file]');
+  const photoBtn = form.querySelector('[data-photo-btn]');
   const urlInput = form.querySelector('[data-photo-url]');
   const previewBox = form.querySelector('[data-preview-box]');
   if (!urlInput || !previewBox) return;
@@ -193,13 +194,14 @@ function setupPhotoAttachment(form, initialUrl = '') {
         <img src="${esc(clean)}" alt="Preview" class="photo-preview-img" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'40\\' height=\\'40\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'%23888\\' stroke-width=\\'2\\'><rect width=\\'18\\' height=\\'18\\' x=\\'3\\' y=\\'3\\' rx=\\'2\\'/></svg>';" />
         <button type="button" class="photo-remove-btn" data-remove-photo title="Remove photo" aria-label="Remove photo">✕</button>
       `;
-      previewBox.querySelector('[data-remove-photo]')?.addEventListener('click', () => {
+      previewBox.querySelector('[data-remove-photo]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
         urlInput.value = '';
         if (fileInput) fileInput.value = '';
         updatePreview('');
       });
     } else {
-      previewBox.innerHTML = `<span class="photo-placeholder">${icon('image', 22)}<span>No photo</span></span>`;
+      previewBox.innerHTML = `<span class="photo-placeholder">${icon('image', 22)}<span>Upload from computer</span><small style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;">or drag &amp; drop</small></span>`;
     }
   };
 
@@ -209,29 +211,58 @@ function setupPhotoAttachment(form, initialUrl = '') {
     updatePreview(urlInput.value.trim());
   });
 
+  const handleFile = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast('Please choose a valid image file (JPEG, PNG, WebP).', { type: 'error' });
+      return;
+    }
+    previewBox.innerHTML = `<span class="photo-placeholder">${icon('loader', 20)}<span>Uploading ${esc(file.name)}...</span></span>`;
+    try {
+      const dataUrl = await readFileAsOptimizedDataUrl(file);
+      const res = await api('/upload', { method: 'POST', body: { data: dataUrl, filename: file.name, type: 'image' } });
+      if (res && res.url) {
+        urlInput.value = res.url;
+        updatePreview(res.url);
+        toast('Photo uploaded successfully from computer.');
+      } else {
+        throw new Error('Upload response missing url');
+      }
+    } catch (err) {
+      toast('Could not upload photo: ' + (err.message || 'Error'), { type: 'error' });
+      updatePreview(urlInput.value.trim());
+    }
+  };
+
+  photoBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fileInput?.click();
+  });
+
+  previewBox.addEventListener('click', (e) => {
+    if (e.target.closest('[data-remove-photo]')) return;
+    fileInput?.click();
+  });
+
+  previewBox.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    previewBox.style.borderColor = 'var(--accent, #008080)';
+  });
+  previewBox.addEventListener('dragleave', () => {
+    previewBox.style.borderColor = '';
+  });
+  previewBox.addEventListener('drop', (e) => {
+    e.preventDefault();
+    previewBox.style.borderColor = '';
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleFile(file);
+  });
+
   if (fileInput) {
-    fileInput.addEventListener('change', async () => {
+    fileInput.addEventListener('change', () => {
       const file = fileInput.files?.[0];
-      if (!file) return;
-      if (!file.type.startsWith('image/')) {
-        toast('Please choose a valid image file (JPEG, PNG, WebP).', { type: 'error' });
-        return;
-      }
-      previewBox.innerHTML = `<span class="photo-placeholder">${icon('loader', 20)}<span>Uploading...</span></span>`;
-      try {
-        const dataUrl = await readFileAsOptimizedDataUrl(file);
-        const res = await api('/upload', { method: 'POST', body: { data: dataUrl } });
-        if (res && res.url) {
-          urlInput.value = res.url;
-          updatePreview(res.url);
-          toast('Photo attached successfully.');
-        } else {
-          throw new Error('Upload response missing url');
-        }
-      } catch (err) {
-        toast('Could not upload photo: ' + (err.message || 'Error'), { type: 'error' });
-        updatePreview(urlInput.value.trim());
-      }
+      if (file) handleFile(file);
     });
   }
 }
