@@ -651,11 +651,22 @@ export default async function renderLanding(view, ctx = {}) {
                 <div class="landmark-3d-hud">
                   <div class="hud-badge">
                     <span class="hud-live-dot"></span>
-                    <span>3D Interactive Map</span>
+                    <span id="hud-mode-title">3D Street Map</span>
                   </div>
-                  <button type="button" class="hud-view-toggle" id="btn-3d-toggle" title="Toggle 3D Perspective">
-                    ${icon('maximize', 13)} <span>3D Tilt View</span>
-                  </button>
+                  <div class="hud-controls-group">
+                    <button type="button" class="hud-toggle-pill is-active" id="btn-layer-street" title="Switch to OpenStreetMap Street View">
+                      ${icon('map', 12)} <span>Street</span>
+                    </button>
+                    <button type="button" class="hud-toggle-pill" id="btn-layer-sat" title="Switch to Satellite Street View">
+                      ${icon('globe', 12)} <span>Satellite</span>
+                    </button>
+                    <button type="button" class="hud-view-toggle is-active" id="btn-3d-toggle" title="Toggle 3D Perspective vs 2D Flat View">
+                      ${icon('maximize', 13)} <span id="toggle-3d-label">3D Tilt View</span>
+                    </button>
+                    <button type="button" class="hud-toggle-pill" id="btn-recenter-map" title="Recenter Map on Central Addis">
+                      ${icon('navigation', 12)} <span>Center</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1018,6 +1029,9 @@ export default async function renderLanding(view, ctx = {}) {
         panel.classList.toggle('is-active', matches);
         panel.hidden = !matches;
       });
+      if (targetId === 'hub-panel-landmarks' && leafletMap) {
+        setTimeout(() => leafletMap.invalidateSize(), 80);
+      }
     });
   });
 
@@ -1027,11 +1041,87 @@ export default async function renderLanding(view, ctx = {}) {
   const previewContainer = view.querySelector('#smart-landmark-preview');
   const chips = view.querySelectorAll('.linked-landmark-chip');
   const toggle3dBtn = view.querySelector('#btn-3d-toggle');
+  const btnLayerStreet = view.querySelector('#btn-layer-street');
+  const btnLayerSat = view.querySelector('#btn-layer-sat');
+  const btnRecenter = view.querySelector('#btn-recenter-map');
+  const hudModeTitle = view.querySelector('#hud-mode-title');
 
   let leafletMap = null;
+  let currentTileLayer = null;
+  let satelliteOverlayLayer = null;
+  let activeLayerType = 'street';
   let markers = [];
   let is3D = true;
   let activeIdx = 0;
+
+  const updateHudTitle = () => {
+    if (!hudModeTitle) return;
+    const layerName = activeLayerType === 'sat' ? 'Satellite View' : 'Street Map';
+    hudModeTitle.textContent = is3D ? `3D ${layerName}` : `2D ${layerName}`;
+  };
+
+  const setLayer = (type) => {
+    if (!leafletMap || typeof window.L === 'undefined') return;
+    const L = window.L;
+    activeLayerType = type;
+
+    if (currentTileLayer) {
+      leafletMap.removeLayer(currentTileLayer);
+      currentTileLayer = null;
+    }
+    if (satelliteOverlayLayer) {
+      leafletMap.removeLayer(satelliteOverlayLayer);
+      satelliteOverlayLayer = null;
+    }
+
+    if (type === 'sat') {
+      currentTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: '&copy; Esri, Maxar',
+      }).addTo(leafletMap);
+
+      satelliteOverlayLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        opacity: 0.95,
+      }).addTo(leafletMap);
+    } else {
+      currentTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors',
+      }).addTo(leafletMap);
+    }
+
+    btnLayerStreet?.classList.toggle('is-active', type === 'street');
+    btnLayerSat?.classList.toggle('is-active', type === 'sat');
+    updateHudTitle();
+  };
+
+  const toggle3DView = (forceVal = null) => {
+    is3D = forceVal !== null ? forceVal : !is3D;
+    stageContainer?.classList.toggle('is-3d', is3D);
+    stageContainer?.classList.toggle('is-flat', !is3D);
+
+    if (toggle3dBtn) {
+      toggle3dBtn.classList.toggle('is-active', is3D);
+      const label = toggle3dBtn.querySelector('span');
+      if (label) label.textContent = is3D ? '3D Tilt View' : '2D Flat View';
+    }
+
+    updateHudTitle();
+
+    setTimeout(() => {
+      if (leafletMap) leafletMap.invalidateSize();
+    }, 250);
+  };
+
+  toggle3dBtn?.addEventListener('click', () => toggle3DView());
+  btnLayerStreet?.addEventListener('click', () => setLayer('street'));
+  btnLayerSat?.addEventListener('click', () => setLayer('sat'));
+  btnRecenter?.addEventListener('click', () => {
+    if (leafletMap) {
+      leafletMap.flyTo([9.018, 38.765], 13, { duration: 0.8 });
+    }
+  });
 
   const renderLandmarkPreview = (idx) => {
     const area = POPULAR_AREAS[idx] || POPULAR_AREAS[0];
@@ -1083,9 +1173,9 @@ export default async function renderLanding(view, ctx = {}) {
       pin.classList.toggle('is-active', Number(pin.dataset.idx) === idx);
     });
 
-    // Pan map smoothly to the 3D pin location
+    // Pan map directly to street view of location
     if (panMap && leafletMap) {
-      leafletMap.flyTo([area.lat, area.lng], 14, { duration: 0.7 });
+      leafletMap.flyTo([area.lat, area.lng], 15, { duration: 0.8 });
     }
 
     renderLandmarkPreview(idx);
@@ -1098,39 +1188,22 @@ export default async function renderLanding(view, ctx = {}) {
     });
   });
 
-  // Toggle 3D Perspective Tilt vs Flat 2D View
-  toggle3dBtn?.addEventListener('click', () => {
-    is3D = !is3D;
-    stageContainer?.classList.toggle('is-3d', is3D);
-    stageContainer?.classList.toggle('is-flat', !is3D);
-    if (toggle3dBtn) {
-      toggle3dBtn.innerHTML = is3D
-        ? `${icon('maximize', 13)} <span>3D Tilt View</span>`
-        : `${icon('minimize-2', 13)} <span>2D Flat View</span>`;
-    }
-    setTimeout(() => {
-      if (leafletMap) leafletMap.invalidateSize();
-    }, 350);
-  });
-
-  // Initialize Leaflet with 3D Logo Icons & Connected Corridors
+  // Initialize Leaflet Map with actual street tiles and 3D pins
   if (mapContainer && window.L) {
     const L = window.L;
     try {
       leafletMap = L.map(mapContainer, {
         center: [9.018, 38.765],
         zoom: 13,
-        zoomControl: false,
+        zoomControl: true,
         attributionControl: false,
         scrollWheelZoom: false,
         dragging: true,
         tap: true,
       });
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        maxZoom: 19,
-        subdomains: 'abcd',
-      }).addTo(leafletMap);
+      // Default to actual Street Map
+      setLayer('street');
 
       // Connected City Transit Corridors Line
       const routePoints = [
@@ -1147,7 +1220,7 @@ export default async function renderLanding(view, ctx = {}) {
       L.polyline(routePoints, {
         color: '#2563eb',
         weight: 3.5,
-        opacity: 0.65,
+        opacity: 0.75,
         dashArray: '6, 8',
         lineCap: 'round',
       }).addTo(leafletMap);
@@ -1179,8 +1252,16 @@ export default async function renderLanding(view, ctx = {}) {
         });
         markers.push(marker);
       });
+
+      // Invalidate sizes after layout settle to render tiles crisply
+      setTimeout(() => {
+        if (leafletMap) leafletMap.invalidateSize();
+      }, 100);
+      setTimeout(() => {
+        if (leafletMap) leafletMap.invalidateSize();
+      }, 400);
     } catch (err) {
-      console.warn('Could not initialize 3D landing map', err);
+      console.warn('Could not initialize landing map', err);
     }
   }
 
@@ -1255,5 +1336,9 @@ export default async function renderLanding(view, ctx = {}) {
 
   return () => {
     if (timerId) clearInterval(timerId);
+    if (leafletMap) {
+      try { leafletMap.remove(); } catch { /* ignore */ }
+      leafletMap = null;
+    }
   };
 }

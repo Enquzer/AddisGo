@@ -7768,18 +7768,18 @@ input:checked + .slider-toggle:before {
   position: relative;
   border-radius: var(--radius-lg, 16px);
   overflow: hidden;
-  background: #030a21;
+  background: #0b1329;
   border: 1px solid #cbd5e1;
   box-shadow: 0 16px 40px rgba(0, 17, 75, 0.16);
   perspective: 1100px;
-  min-height: 400px;
+  min-height: 420px;
 }
 
 .landmark-3d-map {
   width: 100%;
-  height: 400px;
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  background: #f8fafc;
+  height: 420px;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), filter 0.3s ease;
+  background: #f1f5f9;
 }
 
 .landmark-3d-stage.is-3d .landmark-3d-map {
@@ -7789,6 +7789,20 @@ input:checked + .slider-toggle:before {
 
 .landmark-3d-stage.is-flat .landmark-3d-map {
   transform: rotateX(0deg) scale(1);
+  transform-origin: center center;
+}
+
+/* Stand markers upright perpendicular in 3D perspective */
+.landmark-3d-stage.is-3d .custom-3d-marker-wrap {
+  transform: rotateX(-24deg);
+  transform-origin: center bottom;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.landmark-3d-stage.is-flat .custom-3d-marker-wrap {
+  transform: rotateX(0deg);
+  transform-origin: center bottom;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .landmark-3d-hud {
@@ -7799,15 +7813,17 @@ input:checked + .slider-toggle:before {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  z-index: 400;
+  gap: 8px;
+  z-index: 500;
   pointer-events: none;
+  flex-wrap: wrap;
 }
 
 .hud-badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(0, 17, 75, 0.85);
+  background: rgba(0, 17, 75, 0.88);
   backdrop-filter: blur(8px);
   color: #ffffff;
   padding: 6px 14px;
@@ -7815,7 +7831,8 @@ input:checked + .slider-toggle:before {
   font-size: 0.78rem;
   font-weight: 700;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  pointer-events: auto;
 }
 
 .hud-live-dot {
@@ -7827,27 +7844,65 @@ input:checked + .slider-toggle:before {
   animation: pulseDot 2s infinite;
 }
 
+.hud-controls-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+  flex-wrap: wrap;
+}
+
+.hud-toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0, 17, 75, 0.15);
+  color: #00114b;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 99px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 17, 75, 0.12);
+  transition: all 0.18s ease;
+}
+
+.hud-toggle-pill:hover {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 17, 75, 0.18);
+}
+
+.hud-toggle-pill.is-active {
+  background: #00114b;
+  color: #ffffff;
+  border-color: #00114b;
+  box-shadow: 0 4px 14px rgba(0, 17, 75, 0.3);
+}
+
 .hud-view-toggle {
   pointer-events: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #ffffff;
-  border: 1px solid rgba(0, 17, 75, 0.15);
-  color: #00114b;
-  font-size: 0.78rem;
+  background: #2563eb;
+  border: 1px solid #1d4ed8;
+  color: #ffffff;
+  font-size: 0.76rem;
   font-weight: 700;
   padding: 6px 14px;
   border-radius: 99px;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 17, 75, 0.15);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.32);
   transition: all 0.18s ease;
 }
 
 .hud-view-toggle:hover {
-  background: #f8fafc;
+  background: #1d4ed8;
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(0, 17, 75, 0.22);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.4);
 }
 
 /* Custom 3D DivIcon Pins with Small Logo Icons */
@@ -7965,10 +8020,11 @@ input:checked + .slider-toggle:before {
     grid-template-columns: 1fr;
   }
   .landmark-3d-map {
-    height: 320px;
+    height: 340px;
   }
-}
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+  .hud-badge {
+    display: none;
+  }
 }
 
 .smart-landmark-bullet {
