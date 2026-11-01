@@ -22,10 +22,73 @@ const LANGUAGES = [
 
 const COLOURS = ['#145c45', '#0d3b2e', '#3b6ea5', '#e86a4a', '#b0563f', '#7a4f9e', '#b6802f', '#2f7d78'];
 
+const AVATAR_MAX_INPUT_BYTES = 12 * 1024 * 1024;
+const AVATAR_EDGE = 512;
+
+function loadImageElement(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('That image could not be read. Please try another photo.'));
+    };
+    image.src = url;
+  });
+}
+
+async function readAvatarFile(file) {
+  if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
+    throw new Error('Choose a JPG, PNG or WebP photo. SVG files are not accepted.');
+  }
+  if (file.size > AVATAR_MAX_INPUT_BYTES) {
+    throw new Error('That photo is larger than 12 MB. Please choose a smaller one.');
+  }
+  if (typeof window.createImageBitmap === 'function') {
+    try {
+      return await window.createImageBitmap(file);
+    } catch {
+      return loadImageElement(file);
+    }
+  }
+  return loadImageElement(file);
+}
+
+/** Centre-crop and downscale in the browser so only a small image is uploaded. */
+async function downscaleAvatar(file) {
+  const image = await readAvatarFile(file);
+  const width = Number(image.width);
+  const height = Number(image.height);
+  if (!width || !height) throw new Error('That image could not be read. Please try another photo.');
+  const side = Math.min(width, height);
+  const target = Math.max(1, Math.min(AVATAR_EDGE, side));
+  const canvas = document.createElement('canvas');
+  canvas.width = target;
+  canvas.height = target;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Your browser could not resize that photo.');
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  // A white matte keeps transparent PNGs from turning black in JPEG fallbacks.
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, target, target);
+  context.drawImage(image, (width - side) / 2, (height - side) / 2, side, side, 0, 0, target, target);
+  if (typeof image.close === 'function') image.close();
+  const data = canvas.toDataURL('image/webp', 0.86);
+  if (!/^data:image\/(?:webp|png|jpeg);base64,/i.test(data)) {
+    throw new Error('Your browser could not prepare that photo.');
+  }
+  return data;
+}
+
 export default async function renderProfile(view, ctx) {
   let tab = ctx.query.get('tab') || 'profile';
   if (!TABS.some((t) => t.key === tab)) tab = 'profile';
-  const user = state.user;
+  let user = state.user;
 
   view.innerHTML = `
     <section class="profile-page">
@@ -36,9 +99,17 @@ export default async function renderProfile(view, ctx) {
       })}
 
       <div class="profile-hero panel">
-        <div class="profile-avatar-wrap">
-          <span id="profile-avatar">${avatar(user, 76)}</span>
-          <span class="profile-status ${user.status === 'active' ? 'is-active' : ''}">${esc(user.status === 'active' ? 'Active' : user.status)}</span>
+        <div class="profile-avatar-block">
+          <div class="profile-avatar-wrap">
+            <span id="profile-avatar">${avatar(user, 76)}</span>
+            <span class="profile-status ${user.status === 'active' ? 'is-active' : ''}">${esc(user.status === 'active' ? 'Active' : user.status)}</span>
+          </div>
+          <div class="profile-avatar-tools">
+            <button type="button" class="btn btn-sm btn-ghost" id="avatar-upload">${icon('camera', 14)} Change photo</button>
+            <button type="button" class="btn btn-sm btn-ghost btn-danger-text" id="avatar-remove" ${user.avatar_url ? '' : 'hidden'}>${icon('trash', 14)} Remove</button>
+          </div>
+          <input type="file" id="avatar-file" accept="image/jpeg,image/png,image/webp" hidden />
+          <p class="profile-avatar-hint">JPG, PNG or WebP · resized automatically</p>
         </div>
         <div class="profile-hero-copy">
           <h2 id="profile-hero-name">${esc(user.name)}</h2>
@@ -321,6 +392,7 @@ export default async function renderProfile(view, ctx) {
       host.innerHTML = avatar({
         name: nameInput.value.trim() || user.name,
         avatar_color: chosen,
+        avatar_url: user.avatar_url,
         is_verified: user.is_verified,
       }, 76);
     }
@@ -339,6 +411,58 @@ export default async function renderProfile(view, ctx) {
     input.addEventListener('change', paintAvatarPreview);
   });
   paintAvatarPreview();
+
+  const avatarInput = $('#avatar-file', view);
+  const avatarButton = $('#avatar-upload', view);
+  const avatarRemove = $('#avatar-remove', view);
+
+  const applyAvatarResult = async (avatarUrl) => {
+    try {
+      user = await refreshMe();
+    } catch {
+      user = { ...user, avatar_url: avatarUrl };
+      state.user = user;
+    }
+    paintAvatarPreview();
+    if (avatarRemove) avatarRemove.hidden = !user.avatar_url;
+  };
+
+  avatarButton?.addEventListener('click', () => avatarInput?.click());
+
+  avatarInput?.addEventListener('change', async () => {
+    const file = avatarInput.files?.[0];
+    avatarInput.value = '';
+    if (!file) return;
+    await withBusy(avatarButton, async () => {
+      try {
+        const data = await downscaleAvatar(file);
+        const result = await api('/profile/avatar', { method: 'POST', body: { data }, timeout: 30_000 });
+        await applyAvatarResult(result.avatar_url);
+        toast('Profile photo updated.');
+      } catch (error) {
+        toastError(error, 'That photo could not be uploaded.');
+      }
+    });
+  });
+
+  avatarRemove?.addEventListener('click', async () => {
+    const confirmed = await confirmModal({
+      title: 'Remove your profile photo?',
+      message: 'Your initials and avatar colour will show instead. You can upload a new photo at any time.',
+      confirmLabel: 'Remove photo',
+      danger: true,
+    });
+    if (!confirmed) return;
+    await withBusy(avatarRemove, async () => {
+      try {
+        await api('/profile/avatar', { method: 'DELETE' });
+        await applyAvatarResult('');
+        toast('Profile photo removed.');
+      } catch (error) {
+        toastError(error);
+      }
+    });
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();

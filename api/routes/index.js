@@ -46,6 +46,8 @@ route('POST', '/auth/logout', auth.logout);
 route('GET', '/auth/me', auth.me);
 route('PATCH', '/profile', auth.updateProfile);
 route('POST', '/profile/password', auth.changePassword);
+route('POST', '/profile/avatar', uploads.uploadAvatar);
+route('DELETE', '/profile/avatar', uploads.removeAvatar);
 route('GET', '/notifications', misc.notifications);
 route('POST', '/notifications/read', misc.markNotificationsRead);
 route('POST', '/notifications/:id/read', misc.markOneNotificationRead);

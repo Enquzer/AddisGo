@@ -29,7 +29,7 @@ export async function nearby(ctx) {
   if (!validCoords(lat, lng)) throw AppError.bad('Please choose a pickup point inside Addis Ababa.');
 
   const rows = ctx.db.all(
-    `SELECT d.id, d.user_id, u.name, u.avatar_color, d.rating, d.rating_count, d.trips,
+    `SELECT d.id, d.user_id, u.name, u.avatar_color, u.avatar_url, d.rating, d.rating_count, d.trips,
             d.vehicle_class, d.make_model, d.plate, d.color, d.is_online, d.lat, d.lng
      FROM drivers d JOIN users u ON u.id = d.user_id
      WHERE d.status = 'approved' AND d.is_online = 1 AND u.status = 'active'
@@ -47,6 +47,7 @@ export async function nearby(ctx) {
       user_id: row.user_id,
       name: row.name,
       avatar_color: row.avatar_color,
+      avatar_url: row.avatar_url ?? '',
       rating: Number(row.rating ?? 5),
       rating_count: Number(row.rating_count ?? 0),
       trips: Number(row.trips ?? 0),

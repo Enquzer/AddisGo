@@ -893,7 +893,7 @@ export async function messagesPost(ctx) {
   const message = ctx.db.get(
     `SELECT m.id AS id, m.body AS body, m.created_at AS created_at,
             u.id AS uid, u.name AS uname, u.role AS urole, u.bio AS ubio, u.languages AS ulanguages,
-            u.avatar_color AS uavatar, u.is_verified AS uverified
+            u.avatar_color AS uavatar, u.avatar_url AS uavatar_url, u.is_verified AS uverified
      FROM messages m JOIN users u ON u.id = m.user_id WHERE m.id = ?`,
     [created.lastInsertRowid],
   );
@@ -908,6 +908,7 @@ export async function messagesPost(ctx) {
       bio: message.ubio ?? '',
       languages: splitLanguages(message.ulanguages),
       avatar_color: message.uavatar,
+      avatar_url: message.uavatar_url ?? '',
       is_verified: Boolean(message.uverified),
     },
     is_own: true,

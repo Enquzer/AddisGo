@@ -110,9 +110,22 @@ export function initials(name) {
   return parts.map((p) => p[0] || '').join('').toUpperCase() || '?';
 }
 
+/** Only render avatar sources we control or that are explicitly safe. */
+function safeAvatarUrl(value) {
+  if (/^\/api\/uploads\/[a-f0-9]{32}\.(?:jpg|png|webp)$/i.test(value)) return value;
+  if (/^assets\/[a-z0-9/_-]+\.(?:svg|png|jpe?g|webp)$/i.test(value)) return value;
+  if (/^data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=]+$/i.test(value)) return value;
+  if (/^blob:https?:\/\/[^\s]+$/i.test(value)) return value;
+  if (/^https:\/\/[^\s]+$/i.test(value)) return value;
+  return null;
+}
+
 export function getAvatarUrl(user) {
-  if (user?.avatar_url) return user.avatar_url;
-  if (user?.photo_url) return user.photo_url;
+  const stored = String(user?.avatar_url || user?.photo_url || '').trim();
+  if (stored) {
+    const safe = safeAvatarUrl(stored);
+    if (safe) return safe;
+  }
   const name = String(user?.name || '').toLowerCase();
   if (name.includes('dawit')) return 'assets/drivers/dawit.svg';
   if (name.includes('lidya')) return 'assets/drivers/lidya.svg';

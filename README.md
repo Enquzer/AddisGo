@@ -107,7 +107,7 @@ accounts.
 - Driver mode: online toggle with map location picker, live request queue with
   accept, trip state controls, earnings (today / week / lifetime), vehicle profile
   and verification status.
-- Profile: details, avatar, language, password change and a safety centre.
+- Profile: details, profile photo, avatar colour, languages, password change and a safety centre.
 
 ---
 
@@ -148,7 +148,7 @@ All endpoints live under `/api`. Responses are JSON; errors are
 | Area | Endpoints |
 | --- | --- |
 | Public | `GET /health`, `GET /public/stats` |
-| Session | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `PATCH /profile`, `POST /profile/password` |
+| Session | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `PATCH /profile`, `POST /profile/password`, `POST /profile/avatar`, `DELETE /profile/avatar` |
 | Notifications | `GET /notifications`, `POST /notifications/read` |
 | Safety | `POST /reports` |
 | Drivers | `GET /drivers/nearby`, `GET /driver/me`, `PATCH /driver/status`, `PATCH /driver/profile`, `GET /driver/requests`, `POST /driver/verify` |
@@ -189,6 +189,12 @@ All endpoints live under `/api`. Responses are JSON; errors are
   is accepted.
 - **Input**: strict validation and length caps on every field, integer IDs, Addis
   bounding-box checks, parameterised SQL only.
+- **Profile photos**: the browser centre-crops and downscales to 512 px before
+  upload. The API independently checks the data-URI type, file magic bytes, real
+  pixel dimensions (16–4096 px) and a 1 MB byte cap, accepts only JPEG/PNG/WebP
+  (never SVG), stores a random filename under `data/uploads/`, and deletes the
+  previous file when it is no longer referenced. Uploads are limited to 10 per
+  user per hour.
 - **Audit trail**: sensitive actions are recorded with actor, action and timestamp.
 
 For a real deployment put the app behind HTTPS, set `ADDISGO_COOKIE_SECURE=1`
@@ -268,6 +274,7 @@ Start the server first, then:
 node api/tests/smoke.js              # 68-check end-to-end API suite
 node api/tests/email.js              # Gmail config, verification and fallback checks
 node api/tests/hardening.js          # rate limits, request ids, idempotency and email retry
+node api/tests/avatar.js             # profile-photo validation, serving and removal
 node api/tests/phase1.js             # ratings, cancellations and dispatch checks
 node api/tests/phase2plus.js         # presence, revenue, analytics and area checks
 node api/tests/browser.js            # headless Chrome UI suite (71 checks)
@@ -284,6 +291,7 @@ the browser with `ADDISGO_CHROME=<path>` and the target with
 
 `npm test --prefix api` runs the smoke suite, `npm run test:email --prefix api` the
 Gmail suite, `npm run test:hardening --prefix api` the rate-limit/idempotency suite,
+`npm run test:avatar --prefix api` the profile-photo suite,
 `npm run test:ui --prefix api` the UI suite and
 `npm run check --prefix api` the parser check - all without extra dependencies.
 

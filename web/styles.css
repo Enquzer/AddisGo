@@ -7003,6 +7003,30 @@ input:checked + .slider-toggle:before {
   flex-shrink: 0;
   display: inline-flex;
 }
+.profile-avatar-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.profile-avatar-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.profile-avatar-tools .btn {
+  white-space: nowrap;
+}
+.profile-avatar-hint {
+  margin: 0;
+  max-width: 170px;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+  text-align: center;
+}
 .profile-avatar-wrap .avatar {
   box-shadow: 0 6px 18px rgba(0, 17, 75, 0.18);
 }
@@ -7543,6 +7567,12 @@ input:checked + .slider-toggle:before {
   }
   .profile-avatar-wrap {
     justify-self: start;
+  }
+  .profile-avatar-block {
+    align-items: flex-start;
+  }
+  .profile-avatar-hint {
+    text-align: left;
   }
   .profile-hero-actions {
     grid-column: auto;

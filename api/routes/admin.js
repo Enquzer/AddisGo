@@ -10,7 +10,7 @@ import {
   avatarColorFor, charLen, daysAgo, isoFrom, nowIso, round1, todayUtc, validColor, validEmail, validPhone,
 } from '../lib/util.js';
 
-const ADMIN_DRIVER_SELECT = `SELECT d.id, d.user_id, u.name, u.email, u.phone, u.avatar_color,
+const ADMIN_DRIVER_SELECT = `SELECT d.id, d.user_id, u.name, u.email, u.phone, u.avatar_color, u.avatar_url,
     d.vehicle_class, d.make_model, d.plate, d.color, d.license_no, d.status, u.status AS user_status,
     d.is_online, d.lat, d.lng, d.rating, d.rating_count, d.trips, d.created_at, d.approved_at
  FROM drivers d JOIN users u ON u.id = d.user_id`;
@@ -23,6 +23,7 @@ function mapAdminDriver(row) {
     email: row.email,
     phone: row.phone,
     avatar_color: row.avatar_color,
+    avatar_url: row.avatar_url ?? '',
     vehicle_class: row.vehicle_class,
     make_model: row.make_model,
     plate: row.plate,
@@ -46,7 +47,7 @@ const BOOKING_STATUSES = ['requested', 'accepted', 'arriving', 'in_progress', 'c
 const VEHICLE_CLASSES = ['e2', 'comfort', 'van'];
 
 const ADMIN_USER_SELECT = `SELECT u.id, u.name, u.email, u.phone, u.role, u.status, u.is_verified,
-    u.avatar_color, u.bio, u.created_at,
+    u.avatar_color, u.avatar_url, u.bio, u.created_at,
     (SELECT status FROM drivers WHERE user_id = u.id) AS driver_status,
     (SELECT COUNT(*) FROM bookings b WHERE b.customer_id = u.id
        OR b.driver_id = (SELECT id FROM drivers WHERE user_id = u.id)) AS bookings
@@ -62,6 +63,7 @@ function mapAdminUser(row) {
     status: row.status,
     is_verified: Boolean(row.is_verified),
     avatar_color: row.avatar_color,
+    avatar_url: row.avatar_url ?? '',
     bio: row.bio ?? '',
     created_at: row.created_at,
     driver_status: row.driver_status ?? null,

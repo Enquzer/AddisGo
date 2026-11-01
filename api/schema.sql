@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     bio           TEXT NOT NULL DEFAULT '',
     languages     TEXT NOT NULL DEFAULT 'English, Amharic',
     avatar_color  TEXT NOT NULL DEFAULT '#145c45',
+    avatar_url    TEXT NOT NULL DEFAULT '',
     is_verified   INTEGER NOT NULL DEFAULT 0,
     status        TEXT NOT NULL DEFAULT 'active'
                   CHECK (status IN ('active', 'suspended')),

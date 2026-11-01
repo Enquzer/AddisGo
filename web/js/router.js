@@ -29,6 +29,22 @@ let activeCleanup = null;
 let currentKey = '';
 let started = false;
 
+// A page reloaded after a deploy can still hold old in-memory modules that no
+// longer match freshly fetched ones. Detect the browser's module errors and
+// reload once instead of showing a misleading "check your connection" screen.
+const STALE_MODULE_RE = /does not provide an export|Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|MIME type of "text\/html"/i;
+const STALE_RELOAD_KEY = 'addisgo:stale-reload';
+
+function reloadForStaleModule(error) {
+  if (!STALE_MODULE_RE.test(String(error?.message || error || ''))) return false;
+  let last = 0;
+  try { last = Number(window.sessionStorage.getItem(STALE_RELOAD_KEY) || 0); } catch { /* storage blocked */ }
+  if (Date.now() - last < 30_000) return false;
+  try { window.sessionStorage.setItem(STALE_RELOAD_KEY, String(Date.now())); } catch { /* storage blocked */ }
+  window.location.reload();
+  return true;
+}
+
 function parseHash() {
   const raw = window.location.hash.replace(/^#/, '') || '/';
   const [pathPart, queryPart = ''] = raw.split('?');
@@ -146,6 +162,7 @@ export async function render() {
     try { view.focus({ preventScroll: true }); } catch { /* ignore */ }
   } catch (error) {
     console.error('Page failed to load', error);
+    if (reloadForStaleModule(error)) return;
     view.innerHTML = errorBlock('This page could not be loaded. Please check your connection and try again.');
     view.querySelector('#retry-block')?.addEventListener('click', () => void render());
   }

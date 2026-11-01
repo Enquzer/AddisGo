@@ -31,6 +31,8 @@ export function openDatabase(file) {
     ['bookings', 'driver_release_count', 'INTEGER NOT NULL DEFAULT 0'],
     ['users', 'rating', 'REAL NOT NULL DEFAULT 5.0'],
     ['users', 'rating_count', 'INTEGER NOT NULL DEFAULT 0'],
+    // Profile pictures — stored as a local /api/uploads path, never a remote URL.
+    ['users', 'avatar_url', "TEXT NOT NULL DEFAULT ''"],
     // Phase 2 — presence heartbeat. Sessions live in driver_sessions; this column
     // is the fast "is this driver still there?" check dispatch can read.
     ['drivers', 'last_heartbeat', 'TEXT'],
@@ -184,6 +186,7 @@ export function mapPublic(row, prefix = '') {
     bio: row[`${p}bio`] ?? '',
     languages: splitLanguages(languages),
     avatar_color: row[`${p}avatar_color`] ?? '#145c45',
+    avatar_url: row[`${p}avatar_url`] ?? '',
     is_verified: Boolean(row[`${p}is_verified`]),
     rating: Number(row[`${p}rating`] ?? 5),
     rating_count: Number(row[`${p}rating_count`] ?? 0),
@@ -226,8 +229,10 @@ export const BOOKING_SELECT = `SELECT
   b.arrived_at AS arrived_at, b.driver_release_count AS driver_release_count,
   cu.id AS cust_id, cu.name AS cust_name, cu.role AS cust_role, cu.bio AS cust_bio,
   cu.languages AS cust_languages, cu.avatar_color AS cust_avatar, cu.is_verified AS cust_verified,
+  cu.avatar_url AS cust_avatar_url,
   cu.phone AS cust_phone, cu.rating AS cust_rating, cu.rating_count AS cust_rating_count,
   d.id AS drv_id, d.user_id AS drv_user_id, du.name AS drv_name, du.avatar_color AS drv_avatar,
+  du.avatar_url AS drv_avatar_url,
   d.rating AS drv_rating, d.rating_count AS drv_rating_count, d.trips AS drv_trips,
   d.vehicle_class AS drv_class, d.make_model AS drv_model, d.plate AS drv_plate,
   d.color AS drv_color, d.is_online AS drv_online, d.lat AS drv_lat, d.lng AS drv_lng,
@@ -244,6 +249,7 @@ export function mapBooking(row) {
         user_id: row.drv_user_id,
         name: row.drv_name,
         avatar_color: row.drv_avatar ?? '#145c45',
+        avatar_url: row.drv_avatar_url ?? '',
         rating: Number(row.drv_rating ?? 5),
         rating_count: Number(row.drv_rating_count ?? 0),
         trips: Number(row.drv_trips ?? 0),
@@ -356,11 +362,13 @@ export const TOUR_SELECT = `SELECT
   COALESCE(t.image_url, '') AS image_url,
   t.created_at AS created_at,
   u.id AS host_id, u.name AS host_name, u.role AS host_role, u.bio AS host_bio,
-  u.languages AS host_languages, u.avatar_color AS host_avatar, u.is_verified AS host_verified
+  u.languages AS host_languages, u.avatar_color AS host_avatar, u.is_verified AS host_verified,
+  u.avatar_url AS host_avatar_url
  FROM tours t JOIN users u ON u.id = t.host_id`;
 
 const MEMBER_SELECT = `SELECT u.id AS id, u.name AS name, u.role AS role, u.bio AS bio,
-  u.languages AS languages, u.avatar_color AS avatar_color, u.is_verified AS is_verified
+  u.languages AS languages, u.avatar_color AS avatar_color, u.avatar_url AS avatar_url,
+  u.is_verified AS is_verified
  FROM tour_members m JOIN users u ON u.id = m.user_id
  WHERE m.tour_id = ? ORDER BY m.joined_at ASC, m.id ASC`;
 
@@ -401,7 +409,7 @@ export function isTourMember(db, tourId, userId) {
 
 const MESSAGE_SELECT = `SELECT m.id AS id, m.body AS body, m.created_at AS created_at,
   u.id AS uid, u.name AS uname, u.role AS urole, u.bio AS ubio, u.languages AS ulanguages,
-  u.avatar_color AS uavatar, u.is_verified AS uverified
+  u.avatar_color AS uavatar, u.avatar_url AS uavatar_url, u.is_verified AS uverified
  FROM messages m JOIN users u ON u.id = m.user_id`;
 
 function mapMessage(row, viewerId) {
@@ -416,6 +424,7 @@ function mapMessage(row, viewerId) {
       bio: row.ubio ?? '',
       languages: splitLanguages(row.ulanguages),
       avatar_color: row.uavatar ?? '#145c45',
+      avatar_url: row.uavatar_url ?? '',
       is_verified: Boolean(row.uverified),
     },
     is_own: row.uid === viewerId,
@@ -446,7 +455,7 @@ export function messageById(db, id, viewerId) {
 export function publicUser(db, userId) {
   const row = db.get(
     `SELECT u.id AS id, u.name AS name, u.role AS role, u.bio AS bio, u.languages AS languages,
-            u.avatar_color AS avatar_color, u.is_verified AS is_verified
+            u.avatar_color AS avatar_color, u.avatar_url AS avatar_url, u.is_verified AS is_verified
      FROM users u WHERE u.id = ?`,
     [userId],
   );
@@ -455,7 +464,7 @@ export function publicUser(db, userId) {
 
 export function getSelfUser(db, userId) {
   const row = db.get(
-    `SELECT id, name, email, phone, role, bio, languages, avatar_color, is_verified, status, created_at
+    `SELECT id, name, email, phone, role, bio, languages, avatar_color, avatar_url, is_verified, status, created_at
      FROM users WHERE id = ?`,
     [userId],
   );
@@ -469,6 +478,7 @@ export function getSelfUser(db, userId) {
     bio: row.bio ?? '',
     languages: splitLanguages(row.languages),
     avatar_color: row.avatar_color,
+    avatar_url: row.avatar_url ?? '',
     is_verified: Boolean(row.is_verified),
     status: row.status,
     created_at: row.created_at,
