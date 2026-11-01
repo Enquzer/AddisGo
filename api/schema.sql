@@ -158,13 +158,33 @@ CREATE TABLE IF NOT EXISTS subscribers (
 );
 
 CREATE TABLE IF NOT EXISTS email_outbox (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipient       TEXT NOT NULL,
+    subject         TEXT NOT NULL,
+    template        TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'queued',
+    error           TEXT,
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT,
+    last_attempt_at TEXT,
+    delivered_at    TEXT,
+    payload         TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT
+);
+
+/* --- Request de-duplication (Idempotency-Key) --------------------------- */
+
+CREATE TABLE IF NOT EXISTS request_keys (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    recipient  TEXT NOT NULL,
-    subject    TEXT NOT NULL,
-    template   TEXT NOT NULL,
-    status     TEXT NOT NULL DEFAULT 'sent',
-    error      TEXT,
-    created_at TEXT NOT NULL
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    scope      TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    body_hash  TEXT NOT NULL,
+    status     INTEGER NOT NULL DEFAULT 0,
+    response   TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    UNIQUE (user_id, scope, key)
 );
 
 /* --- Admin-managed website content (CRM / CMS) ------------------------- */

@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api, newIdempotencyKey } from '../api.js';
 import { state } from '../store.js';
 import { icon } from '../ui/icons.js';
 import {
@@ -425,6 +425,7 @@ export default async function renderTour(view, ctx) {
       try {
         await api('/reports', {
           method: 'POST',
+          idempotencyKey: newIdempotencyKey(),
           body: { target_type: 'tour', target_id: tour.id, reason, detail: `Tour ${tour.id} — ${tour.title}` },
         });
         toast('Report sent. Our safety desk will review it.');
@@ -442,7 +443,7 @@ export default async function renderTour(view, ctx) {
     if (act === 'join') {
       await withBusy(button, async () => {
         try {
-          tour = await api(`/tours/${tour.id}/join`, { method: 'POST' });
+          tour = await api(`/tours/${tour.id}/join`, { method: 'POST', idempotencyKey: newIdempotencyKey() });
           toast('You are in. Say hello in the group chat.');
           paint();
         } catch (error) {

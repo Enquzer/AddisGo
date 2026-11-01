@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import nodemailer from 'nodemailer';
-import { nowIso } from './util.js';
+import { isoFrom, nowIso } from './util.js';
 
 const API_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const LOG_PATH = path.join(path.dirname(API_DIR), 'data', 'emails.log');
@@ -281,71 +281,274 @@ export function clearEmailConfig(db) {
   return getEmailConfig(db);
 }
 
+/*
+ * Outgoing mail is a durable queue, not a fire-and-forget call.
+ *
+ * Every message is written to `email_outbox` first. Delivery is attempted
+ * inline (so the admin test screen can report a real result) and retried in the
+ * background by startEmailWorker() with exponential backoff and jitter. A
+ * permanent failure stops after OUTBOX_MAX_ATTEMPTS and can be retried by hand
+ * from the admin outbox.
+ */
+
+export const OUTBOX_MAX_ATTEMPTS = 5;
+const OUTBOX_BASE_DELAY_MS = 30_000;
+const OUTBOX_MAX_DELAY_MS = 6 * 60 * 60 * 1000;
+const OUTBOX_STALE_SENDING_MS = 5 * 60 * 1000;
+
+/** Equal-jitter exponential backoff: 15–30 s, 30–60 s, 1–2 min, … capped at 6 h. */
+export function outboxBackoffMs(attempt, random = Math.random) {
+  const step = Math.max(0, Number(attempt) || 0);
+  const base = Math.min(OUTBOX_MAX_DELAY_MS, OUTBOX_BASE_DELAY_MS * 2 ** step);
+  return Math.round(base / 2 + random() * (base / 2));
+}
+
+function readOutboxRow(db, id) {
+  return db.get('SELECT * FROM email_outbox WHERE id = ?', [id]);
+}
+
+function parsePayload(row) {
+  try {
+    return JSON.parse(row.payload || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function plainText(html, text) {
+  if (text) return text;
+  return String(html || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function updateOutbox(db, id, sql, params) {
+  if (!id) return;
+  try {
+    db.run(sql, params);
+  } catch {
+    /* outbox bookkeeping must never fail the caller */
+  }
+}
+
+/** Development / offline fallback: append to data/emails.log and mark the row. */
+function logOffline(db, row, payload, timestamp) {
+  const text = plainText(payload.html, payload.text);
+  const logEntry = `\n--- [OUTBOX ${timestamp}] ---\nTo: ${row.recipient}\nSubject: ${row.subject}\nTemplate: ${row.template}\n${text.slice(0, 300)}...\n------------------------------\n`;
+  try {
+    fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true });
+    fs.appendFileSync(LOG_PATH, logEntry, 'utf8');
+  } catch {
+    /* the outbox row is still the source of truth */
+  }
+
+  updateOutbox(
+    db,
+    row.id,
+    `UPDATE email_outbox SET status = 'logged_offline', attempts = attempts + 1, last_attempt_at = ?,
+       next_attempt_at = NULL, delivered_at = NULL, error = NULL, updated_at = ? WHERE id = ?`,
+    [timestamp, timestamp, row.id],
+  );
+  console.log(`[Email Logger] (${row.template}) to <${row.recipient}>: "${row.subject}" (Stored in data/emails.log)`);
+  return {
+    ok: true,
+    method: 'logged_offline',
+    delivered: false,
+    recipient: row.recipient,
+    outbox_id: row.id ?? null,
+  };
+}
+
+/** One delivery attempt for a queued row. */
+async function deliverRow(db, row, config, timestamp) {
+  const payload = parsePayload(row);
+  if (!payload) {
+    updateOutbox(
+      db,
+      row.id,
+      `UPDATE email_outbox SET status = 'failed', error = ?, last_attempt_at = ?, updated_at = ? WHERE id = ?`,
+      ['The queued message payload could not be read.', timestamp, timestamp, row.id],
+    );
+    return { ok: false, error: 'The queued message payload could not be read.', code: 'bad_payload', method: 'queue', outbox_id: row.id ?? null };
+  }
+
+  if (!config.is_configured) return logOffline(db, row, payload, timestamp);
+
+  updateOutbox(db, row.id, "UPDATE email_outbox SET status = 'sending', updated_at = ? WHERE id = ?", [timestamp, row.id]);
+
+  const conn = resolveConnection(config);
+  try {
+    const transporter = buildTransport(conn);
+    await transporter.sendMail({
+      from: config.from,
+      to: row.recipient,
+      subject: row.subject,
+      text: plainText(payload.html, payload.text),
+      html: payload.html,
+    });
+
+    updateOutbox(
+      db,
+      row.id,
+      `UPDATE email_outbox SET status = 'sent', attempts = attempts + 1, last_attempt_at = ?,
+         next_attempt_at = NULL, delivered_at = ?, error = NULL, updated_at = ? WHERE id = ?`,
+      [timestamp, timestamp, timestamp, row.id],
+    );
+
+    writeMeta(db, 'smtp_last_error', null);
+    writeMeta(db, 'smtp_verified_at', timestamp);
+
+    console.log(`[Email] Dispatched via ${conn.host} to <${row.recipient}>: "${row.subject}"`);
+    return {
+      ok: true,
+      method: 'smtp',
+      delivered: true,
+      recipient: row.recipient,
+      outbox_id: row.id ?? null,
+    };
+  } catch (error) {
+    const info = describeSmtpError(error, conn);
+    const attempts = Number(row.attempts || 0) + 1;
+    const terminal = attempts >= OUTBOX_MAX_ATTEMPTS;
+    const delay = terminal ? null : outboxBackoffMs(attempts - 1);
+    const nextAttemptAt = delay === null ? null : isoFrom(Date.now() + delay);
+
+    console.error(`[Email Error] Failed to send via SMTP to <${row.recipient}>:`, info.detail || info.message);
+    writeMeta(db, 'smtp_last_error', info.message);
+    updateOutbox(
+      db,
+      row.id,
+      `UPDATE email_outbox SET status = ?, attempts = ?, last_attempt_at = ?, next_attempt_at = ?,
+         error = ?, updated_at = ? WHERE id = ?`,
+      [terminal ? 'failed' : 'queued', attempts, timestamp, nextAttemptAt, info.message, timestamp, row.id],
+    );
+
+    return {
+      ok: false,
+      error: info.message,
+      code: info.code,
+      detail: info.detail,
+      method: 'smtp',
+      queued: !terminal,
+      attempts,
+      max_attempts: OUTBOX_MAX_ATTEMPTS,
+      retry_in_ms: delay,
+      outbox_id: row.id ?? null,
+    };
+  }
+}
+
 /**
- * Dispatch an email via Google/SMTP or log locally if not configured.
+ * Queue a message, attempt it once, and return that attempt's result.
+ * Replays happen in the background via processOutbox().
  */
 export async function sendMail(db, { to, subject, html, text, template = 'generic' }) {
-  const config = getEmailConfig(db);
   const timestamp = nowIso();
+  const payload = { to, subject, html: String(html ?? ''), text: text || '', template };
 
-  if (config.is_configured) {
-    const conn = resolveConnection(config);
-    try {
-      const transporter = buildTransport(conn);
-
-      await transporter.sendMail({
-        from: config.from,
-        to,
-        subject,
-        text: text || html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
-        html,
-      });
-
-      try {
-        db.run(
-          'INSERT INTO email_outbox (recipient, subject, template, status, created_at) VALUES (?, ?, ?, ?, ?)',
-          [to, subject, template, 'sent', timestamp],
-        );
-      } catch {
-        /* outbox record non-fatal */
-      }
-
-      writeMeta(db, 'smtp_last_error', null);
-      writeMeta(db, 'smtp_verified_at', timestamp);
-
-      console.log(`[Email] Dispatched via ${conn.host} to <${to}>: "${subject}"`);
-      return { ok: true, method: 'smtp', delivered: true, recipient: to };
-    } catch (err) {
-      const info = describeSmtpError(err, conn);
-      console.error(`[Email Error] Failed to send via SMTP to <${to}>:`, info.detail || info.message);
-      writeMeta(db, 'smtp_last_error', info.message);
-      try {
-        db.run(
-          'INSERT INTO email_outbox (recipient, subject, template, status, error, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-          [to, subject, template, 'failed', info.message, timestamp],
-        );
-      } catch {
-        /* ignore */
-      }
-      return { ok: false, error: info.message, code: info.code, detail: info.detail, method: 'smtp' };
-    }
-  } else {
-    // Development / Offline fallback logger
-    const logEntry = `\n--- [OUTBOX ${timestamp}] ---\nTo: ${to}\nSubject: ${subject}\nTemplate: ${template}\n${text || html.slice(0, 300)}...\n------------------------------\n`;
-    try {
-      fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true });
-      fs.appendFileSync(LOG_PATH, logEntry, 'utf8');
-      db.run(
-        'INSERT INTO email_outbox (recipient, subject, template, status, created_at) VALUES (?, ?, ?, ?, ?)',
-        [to, subject, template, 'logged_offline', timestamp],
-      );
-    } catch {
-      /* ignore */
-    }
-
-    console.log(`[Email Logger] (${template}) to <${to}>: "${subject}" (Stored in data/emails.log)`);
-    return { ok: true, method: 'logged_offline', delivered: false, recipient: to };
+  let id = null;
+  try {
+    const created = db.run(
+      `INSERT INTO email_outbox (recipient, subject, template, status, attempts, payload, created_at, updated_at)
+       VALUES (?, ?, ?, 'queued', 0, ?, ?, ?)`,
+      [to, subject, template, JSON.stringify(payload), timestamp, timestamp],
+    );
+    id = created.lastInsertRowid;
+  } catch {
+    /* queue write failed — still try to deliver, just without a durable row */
   }
+
+  const row = id
+    ? readOutboxRow(db, id)
+    : { id: null, recipient: to, subject, template, attempts: 0, payload: JSON.stringify(payload) };
+  return deliverRow(db, row, getEmailConfig(db), timestamp);
+}
+
+/**
+ * Deliver due queued rows. Safe to call on an interval: only one row per id is
+ * selected at a time, and a row that is mid-send is not selected again.
+ */
+export async function processOutbox(db, { limit = 10 } = {}) {
+  const config = getEmailConfig(db);
+  if (!config.is_configured) return { processed: 0, sent: 0, failed: 0, skipped: 'not_configured' };
+
+  const now = nowIso();
+  // Recover rows left in 'sending' by a previous crash.
+  try {
+    db.run(
+      "UPDATE email_outbox SET status = 'queued', next_attempt_at = ? WHERE status = 'sending' AND updated_at < ?",
+      [now, isoFrom(Date.now() - OUTBOX_STALE_SENDING_MS)],
+    );
+  } catch {
+    /* ignore */
+  }
+
+  const rows = db.all(
+    `SELECT * FROM email_outbox
+      WHERE status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+      ORDER BY id ASC LIMIT ?`,
+    [now, Math.max(1, Math.min(Number(limit) || 10, 50))],
+  );
+
+  let sent = 0;
+  let failed = 0;
+  for (const row of rows) {
+    const result = await deliverRow(db, row, config, nowIso());
+    if (result.delivered) sent += 1;
+    else if (!result.queued) failed += 1;
+  }
+  return { processed: rows.length, sent, failed };
+}
+
+/** Admin action: reset a failed/queued row and try it immediately. */
+export async function retryOutboxItem(db, id) {
+  const row = readOutboxRow(db, id);
+  if (!row) return null;
+  if (row.status === 'sent') return { ok: true, already_sent: true, outbox_id: row.id };
+
+  const timestamp = nowIso();
+  db.run(
+    `UPDATE email_outbox SET status = 'queued', attempts = 0, next_attempt_at = NULL,
+       error = NULL, updated_at = ? WHERE id = ?`,
+    [timestamp, row.id],
+  );
+  return deliverRow(db, readOutboxRow(db, id), getEmailConfig(db), timestamp);
+}
+
+/** Background retry loop. Returns a handle with stop(). */
+export function startEmailWorker(db, { intervalMs = 20_000, firstRunMs = 2_500 } = {}) {
+  let stopped = false;
+  let running = false;
+  let timer = null;
+
+  const schedule = (delay) => {
+    if (stopped) return;
+    timer = setTimeout(tick, delay);
+    if (typeof timer.unref === 'function') timer.unref();
+  };
+
+  const tick = async () => {
+    if (stopped || running) return;
+    running = true;
+    try {
+      await processOutbox(db);
+    } catch (error) {
+      console.error('[Email Worker]', error.message);
+    } finally {
+      running = false;
+      schedule(Math.max(5_000, intervalMs));
+    }
+  };
+
+  schedule(firstRunMs);
+
+  return {
+    stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    },
+  };
 }
 
 // -----------------------------------------------------------------------------

@@ -3,13 +3,21 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { toAppError } from './lib/errors.js';
 import { openDatabase } from './lib/db.js';
+import { startEmailWorker } from './lib/email.js';
 import { seed } from './lib/seed.js';
 import { readJson, sendJson, sendText } from './lib/http.js';
-import { RateLimiter, randomSecret } from './lib/security.js';
+import { RateLimiter, randomSecret, tokenFromRequest, verifyToken } from './lib/security.js';
+import {
+  abortIdempotent,
+  beginIdempotent,
+  completeIdempotent,
+  idempotencyKey,
+} from './lib/idempotency.js';
 import { match, allowedMethods } from './routes/index.js';
 
 const API_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +44,36 @@ const SECURITY_HEADERS = {
   'Permissions-Policy': 'geolocation=(self), camera=(self), microphone=()',
   'Cross-Origin-Opener-Policy': 'same-origin',
 };
+
+// Only send HSTS when the deployment actually terminates TLS, otherwise a
+// local http:// demo could be pinned to https by a browser that cached it.
+if (process.env.ADDISGO_HSTS === '1') {
+  SECURITY_HEADERS['Strict-Transport-Security'] = 'max-age=15552000; includeSubDomains';
+}
+
+const READ_LIMIT_PER_MIN = positiveInt(process.env.ADDISGO_RATE_LIMIT_READ, 1200);
+const WRITE_LIMIT_PER_MIN = positiveInt(process.env.ADDISGO_RATE_LIMIT_WRITE, 300);
+
+function positiveInt(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : fallback;
+}
+
+/** Client identity for the global limiter. Forwarded headers are opt-in. */
+function clientKey(req) {
+  if (process.env.ADDISGO_TRUST_PROXY === '1') {
+    const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    if (forwarded) return forwarded;
+  }
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+/** Accept a caller-supplied correlation id, otherwise mint one. */
+function requestIdFor(req) {
+  const incoming = req.headers['x-request-id'];
+  if (typeof incoming === 'string' && /^[A-Za-z0-9._-]{8,64}$/.test(incoming)) return incoming;
+  return randomUUID();
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -121,7 +159,7 @@ function createApp({ db, secret, webRoot }) {
   const gzipCache = new Map();
   const logRequests = process.env.ADDISGO_LOG === '1';
 
-  async function handleApi(req, res, url) {
+  async function handleApi(req, res, url, requestId) {
     const pathname = url.pathname.replace(/^\/api/, '') || '/';
     let route = match(req.method, pathname);
     if (!route) {
@@ -132,16 +170,30 @@ function createApp({ db, secret, webRoot }) {
         return;
       }
       if (allowed.length) {
-        sendJson(res, 405, { error: `Use ${allowed.join(' or ')} for this endpoint.`, code: 'method_not_allowed' });
+        sendJson(res, 405, { error: `Use ${allowed.join(' or ')} for this endpoint.`, code: 'method_not_allowed', request_id: requestId });
         return;
       }
-      sendJson(res, 404, { error: 'Endpoint not found.', code: 'not_found' });
+      sendJson(res, 404, { error: 'Endpoint not found.', code: 'not_found', request_id: requestId });
       return;
     }
 
     const mutating = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method);
     if (mutating && !originAllowed(req)) {
-      sendJson(res, 403, { error: 'Cross-origin request blocked.', code: 'forbidden' });
+      sendJson(res, 403, { error: 'Cross-origin request blocked.', code: 'forbidden', request_id: requestId });
+      return;
+    }
+
+    // One global bucket per client and request class. The stricter per-account
+    // limits (login, chat, uploads) still run inside their handlers.
+    const bucket = mutating ? 'write' : 'read';
+    const limit = mutating ? WRITE_LIMIT_PER_MIN : READ_LIMIT_PER_MIN;
+    if (!limiter.allow(`global:${bucket}:${clientKey(req)}`, limit, 60_000)) {
+      res.setHeader('Retry-After', '60');
+      sendJson(res, 429, {
+        error: 'Too many requests. Please slow down and try again shortly.',
+        code: 'rate_limited',
+        request_id: requestId,
+      });
       return;
     }
 
@@ -152,9 +204,38 @@ function createApp({ db, secret, webRoot }) {
       } catch (error) {
         const appError = toAppError(error);
         stats.apiErrors += 1;
-        sendJson(res, appError.status, { error: appError.message, code: appError.code });
+        sendJson(res, appError.status, { error: appError.message, code: appError.code, request_id: requestId });
         return;
       }
+    }
+
+    // Idempotent writes: claim the key before running the handler so a retry
+    // replays the stored response instead of doing the work twice.
+    let idem = null;
+    if (route.idempotent && mutating) {
+      try {
+        const key = idempotencyKey(req);
+        if (key) {
+          const claims = verifyToken(tokenFromRequest(req), secret);
+          if (claims) idem = beginIdempotent(db, { userId: claims.sub, scope: route.idempotent, key, body });
+        }
+      } catch (error) {
+        const appError = toAppError(error);
+        sendJson(res, appError.status, { error: appError.message, code: appError.code, request_id: requestId });
+        return;
+      }
+    }
+    if (idem?.kind === 'pending') {
+      sendJson(res, 409, {
+        error: 'That request is already being processed. Please wait a moment.',
+        code: 'request_in_progress',
+        request_id: requestId,
+      });
+      return;
+    }
+    if (idem?.kind === 'replay') {
+      sendJson(res, idem.status, idem.data, { ...SECURITY_HEADERS, 'Idempotency-Replayed': 'true' });
+      return;
     }
 
     const ctx = {
@@ -168,24 +249,30 @@ function createApp({ db, secret, webRoot }) {
       params: route.params,
       body,
       setCookies: [],
+      requestId,
     };
 
     try {
       const result = await route.handler(ctx);
       const cookieHeaders = ctx.setCookies.length ? { 'Set-Cookie': ctx.setCookies } : null;
       if (result && result.__raw) {
+        if (idem?.kind === 'new') abortIdempotent(db, idem.id);
         const headers = { ...SECURITY_HEADERS, ...(result.headers || {}) };
         if (cookieHeaders) headers['Set-Cookie'] = ctx.setCookies;
         res.writeHead(result.status || 200, headers);
         res.end(result.body);
         return;
       }
+      if (idem?.kind === 'new') completeIdempotent(db, idem.id, 200, result);
       sendJson(res, 200, result, { ...SECURITY_HEADERS, ...(cookieHeaders || {}) });
     } catch (error) {
+      if (idem?.kind === 'new') abortIdempotent(db, idem.id);
       const appError = toAppError(error);
       if (appError.status >= 500) stats.apiErrors += 1;
-      if (logRequests) console.error(`[addisgo] ${req.method} ${url.pathname} -> ${appError.status} ${appError.message}`);
-      sendJson(res, appError.status, { error: appError.message, code: appError.code });
+      if (logRequests) {
+        console.error(`[addisgo] ${requestId} ${req.method} ${url.pathname} -> ${appError.status} ${appError.message}`);
+      }
+      sendJson(res, appError.status, { error: appError.message, code: appError.code, request_id: requestId });
     }
   }
 
@@ -277,6 +364,9 @@ function createApp({ db, secret, webRoot }) {
 
   return function handler(req, res) {
     stats.requests += 1;
+    const requestId = requestIdFor(req);
+    res.setHeader('X-Request-Id', requestId);
+
     let url;
     try {
       url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -287,10 +377,14 @@ function createApp({ db, secret, webRoot }) {
     }
 
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-      handleApi(req, res, url).catch((error) => {
-        console.error('[addisgo] unhandled API error:', error);
+      handleApi(req, res, url, requestId).catch((error) => {
+        console.error(`[addisgo] ${requestId} unhandled API error:`, error);
         if (!res.headersSent) {
-          sendJson(res, 500, { error: 'Something went wrong on our side. Please try again.', code: 'server_error' });
+          sendJson(res, 500, {
+            error: 'Something went wrong on our side. Please try again.',
+            code: 'server_error',
+            request_id: requestId,
+          });
         } else {
           res.end();
         }
@@ -338,6 +432,7 @@ async function main() {
   const seeded = seed(db);
   const secret = loadSecret(dataDir);
   const app = createApp({ db, secret, webRoot });
+  const emailWorker = process.env.ADDISGO_EMAIL_WORKER === '0' ? { stop() {} } : startEmailWorker(db);
 
   const server = http.createServer(app);
   server.headersTimeout = 20000;
@@ -372,6 +467,7 @@ async function main() {
     if (closing) return;
     closing = true;
     console.log(`\n[addisgo] ${signal} received, shutting down…`);
+    emailWorker.stop();
     server.close(() => {
       try {
         db.close();

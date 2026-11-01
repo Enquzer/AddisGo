@@ -169,11 +169,20 @@ All endpoints live under `/api`. Responses are JSON; errors are
   server-to-server tools). Extra origins can be allow-listed explicitly.
 - **Headers**: strict CSP (`default-src 'self'`, scripts self-only, no inline
   scripts or `onclick` handlers), `X-Frame-Options: DENY`, `nosniff`,
-  `Referrer-Policy: no-referrer`, restrictive `Permissions-Policy`, HSTS when behind
-  TLS.
-- **Rate limits**: login 20 / 10 min per email, password changes 5 / hour, chat
-  20 / min, driver verification 30 / min, reports 5 / hour. Responses are uniform so
-  accounts cannot be enumerated.
+  `Referrer-Policy: strict-origin-when-cross-origin`, restrictive
+  `Permissions-Policy`, and `Strict-Transport-Security` when `ADDISGO_HSTS=1`.
+- **Rate limits**: every API call is capped per client address (1,200 reads and
+  300 writes per minute by default), on top of the tighter per-account limits:
+  login 20 / 10 min per email, password changes 5 / hour, chat 20 / min, driver
+  verification 30 / min, reports 5 / hour. Responses are uniform so accounts
+  cannot be enumerated, and `429` replies carry `Retry-After`.
+- **Request IDs**: every response carries `X-Request-Id` (a caller-supplied id is
+  echoed when it is well formed), and error bodies include `request_id` so a
+  support report can be traced in the logs.
+- **Idempotent writes**: `POST /bookings`, `POST /tours/:id/join`,
+  `POST /reports` and `POST /newsletter/subscribe` accept an `Idempotency-Key`
+  header. The first response is stored for 24 hours and replayed for retries, so
+  a flaky mobile connection cannot create two rides.
 - **Authorisation**: every route re-checks the session; riders only see their own
   rides, drivers only their assigned rides and nearby requests, and admin routes
   require the admin role. Rider phone numbers stay hidden from drivers until a ride
@@ -182,8 +191,25 @@ All endpoints live under `/api`. Responses are JSON; errors are
   bounding-box checks, parameterised SQL only.
 - **Audit trail**: sensitive actions are recorded with actor, action and timestamp.
 
-For a real deployment put the app behind HTTPS, set `ADDISGO_COOKIE_SECURE=1`, and
-replace the demo accounts.
+For a real deployment put the app behind HTTPS, set `ADDISGO_COOKIE_SECURE=1`
+and `ADDISGO_HSTS=1`, and replace the demo accounts. If a reverse proxy
+terminates TLS, also set `ADDISGO_TRUST_PROXY=1` so rate limits and logs use the
+real client address.
+
+### Resilience
+
+- **Email queue**: outgoing mail is written to `email_outbox` before delivery.
+  Failures are retried in the background with equal-jitter exponential backoff
+  (30 s doubling to a 6-hour cap, 5 attempts) and can be retried by hand from
+  **Admin → Email & Google**. A crash mid-send is recovered on the next start.
+- **Client timeouts**: browser requests abort after 15 seconds and surface a
+  clear "took too long" message instead of hanging.
+- **Retries**: `GET` requests retry twice on network errors, timeouts and
+  `429/502/503/504`, honouring `Retry-After`. Writes only retry when an
+  idempotency key is present.
+- **Database**: SQLite runs in WAL mode with a 5-second busy timeout, and every
+  multi-step write uses `BEGIN IMMEDIATE`.
+
 
 ---
 
@@ -198,6 +224,11 @@ replace the demo accounts.
 | `ADDISGO_JWT_SECRET` | generated | JWT signing secret (32+ characters) |
 | `ADDISGO_COOKIE_SECURE` | off | `1` adds `Secure` to the session cookie (HTTPS) |
 | `ADDISGO_ALLOWED_ORIGINS` | empty | Comma-separated extra allowed origins |
+| `ADDISGO_RATE_LIMIT_READ` | `1200` | Global read requests per minute per client |
+| `ADDISGO_RATE_LIMIT_WRITE` | `300` | Global write requests per minute per client |
+| `ADDISGO_TRUST_PROXY` | off | `1` trusts `X-Forwarded-For` for client identity |
+| `ADDISGO_HSTS` | off | `1` sends `Strict-Transport-Security` (HTTPS only) |
+| `ADDISGO_EMAIL_WORKER` | on | `0` disables the background email retry worker (tests) |
 | `ADDISGO_LOG` | off | `1` logs every request/error to stderr |
 
 Values can also be placed in a `.env` file in the project root (loaded on start).
@@ -236,6 +267,7 @@ Start the server first, then:
 ```bash
 node api/tests/smoke.js              # 68-check end-to-end API suite
 node api/tests/email.js              # Gmail config, verification and fallback checks
+node api/tests/hardening.js          # rate limits, request ids, idempotency and email retry
 node api/tests/phase1.js             # ratings, cancellations and dispatch checks
 node api/tests/phase2plus.js         # presence, revenue, analytics and area checks
 node api/tests/browser.js            # headless Chrome UI suite (71 checks)
@@ -251,8 +283,9 @@ the browser with `ADDISGO_CHROME=<path>` and the target with
 `ADDISGO_BASE=http://localhost:3004`.
 
 `npm test --prefix api` runs the smoke suite, `npm run test:email --prefix api` the
-Gmail suite, `npm run test:ui --prefix api` the UI suite and
-`npm run check --prefix api` the parser check — all without extra dependencies.
+Gmail suite, `npm run test:hardening --prefix api` the rate-limit/idempotency suite,
+`npm run test:ui --prefix api` the UI suite and
+`npm run check --prefix api` the parser check - all without extra dependencies.
 
 ---
 

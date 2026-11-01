@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api, newIdempotencyKey } from '../api.js';
 import { state } from '../store.js';
 import { icon, logoMark } from '../ui/icons.js';
 import { esc, money, dateTime, minutes } from '../ui/format.js';
@@ -1509,7 +1509,7 @@ export default async function renderLanding(view, ctx = {}) {
       if (!email) return;
       newsletterStatus.innerHTML = '<span class="newsletter-msg loading">Subscribing...</span>';
       try {
-        const res = await api('/newsletter/subscribe', { method: 'POST', body: { email } });
+        const res = await api('/newsletter/subscribe', { method: 'POST', idempotencyKey: newIdempotencyKey(), body: { email } });
         newsletterStatus.innerHTML = `<span class="newsletter-msg success">✓ ${esc(res.message || 'Subscribed! Check your inbox.')}</span>`;
         newsletterForm.reset();
       } catch (err) {

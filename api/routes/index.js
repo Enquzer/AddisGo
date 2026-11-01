@@ -9,7 +9,7 @@ import * as uploads from './uploads.js';
 
 const table = [];
 
-function add(method, pattern, handler) {
+function add(method, pattern, handler, options = {}) {
   const keys = [];
   const source = pattern
     .split('/')
@@ -22,11 +22,11 @@ function add(method, pattern, handler) {
       return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     })
     .join('/');
-  table.push({ method, regex: new RegExp(`^${source}/?$`), keys, handler });
+  table.push({ method, regex: new RegExp(`^${source}/?$`), keys, handler, idempotent: options.idempotent || null });
 }
 
-function route(method, pattern, handler) {
-  add(method, pattern, handler);
+function route(method, pattern, handler, options = {}) {
+  add(method, pattern, handler, options);
 }
 
 // Public + session
@@ -49,8 +49,8 @@ route('POST', '/profile/password', auth.changePassword);
 route('GET', '/notifications', misc.notifications);
 route('POST', '/notifications/read', misc.markNotificationsRead);
 route('POST', '/notifications/:id/read', misc.markOneNotificationRead);
-route('POST', '/reports', misc.createReport);
-route('POST', '/newsletter/subscribe', misc.subscribeNewsletter);
+route('POST', '/reports', misc.createReport, { idempotent: 'reports.create' });
+route('POST', '/newsletter/subscribe', misc.subscribeNewsletter, { idempotent: 'newsletter.subscribe' });
 route('POST', '/upload', uploads.uploadMedia);
 route('GET', '/uploads/:filename', uploads.getUpload);
 
@@ -66,7 +66,7 @@ route('POST', '/driver/verify', drivers.verify);
 // Rides
 route('POST', '/estimate', bookings.estimateFare);
 route('GET', '/bookings', bookings.list);
-route('POST', '/bookings', bookings.create);
+route('POST', '/bookings', bookings.create, { idempotent: 'bookings.create' });
 route('GET', '/bookings/:id', bookings.detail);
 route('POST', '/bookings/:id/accept', bookings.accept);
 route('POST', '/bookings/:id/auto-match', bookings.autoMatch);
@@ -82,7 +82,7 @@ route('POST', '/bookings/:id/messages', bookings.messagesPost);
 route('GET', '/tours', tours.list);
 route('POST', '/tours', tours.create);
 route('GET', '/tours/:id', tours.detail);
-route('POST', '/tours/:id/join', tours.join);
+route('POST', '/tours/:id/join', tours.join, { idempotent: 'tours.join' });
 route('POST', '/tours/:id/leave', tours.leave);
 route('POST', '/tours/:id/cancel', tours.cancel);
 route('GET', '/tours/:id/messages', tours.messagesGet);
@@ -135,6 +135,7 @@ route('POST', '/admin/email/verify', admin.verifyEmailSettings);
 route('POST', '/admin/email/disconnect', admin.disconnectEmail);
 route('POST', '/admin/email/test', admin.testEmailSend);
 route('DELETE', '/admin/email/outbox/:id', admin.deleteOutboxItem);
+route('POST', '/admin/email/outbox/:id/retry', admin.retryOutboxItem);
 route('GET', '/admin/subscribers', admin.subscribersList);
 route('DELETE', '/admin/subscribers/:id', admin.deleteSubscriber);
 
@@ -149,7 +150,7 @@ export function match(method, pathname) {
       const raw = decodeURIComponent(found[index + 1] || '');
       params[key] = /^\d+$/.test(raw) ? Number(raw) : raw;
     });
-    return { handler: entry.handler, params };
+    return { handler: entry.handler, params, idempotent: entry.idempotent };
   }
   return null;
 }

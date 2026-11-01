@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api, newIdempotencyKey } from '../api.js';
 import { state } from '../store.js';
 import { icon } from '../ui/icons.js';
 import { esc, money, dateTime, countdown, minutes } from '../ui/format.js';
@@ -184,7 +184,7 @@ export default async function renderTours(view, ctx) {
     }
     await withBusy(joinBtn, async () => {
       try {
-        const updated = await api(`/tours/${joinBtn.dataset.join}/join`, { method: 'POST' });
+        const updated = await api(`/tours/${joinBtn.dataset.join}/join`, { method: 'POST', idempotencyKey: newIdempotencyKey() });
         tours = tours.map((t) => (t.id === updated.id ? updated : t));
         draw();
         toast(`You are going to ${updated.title}. The group chat is open.`);

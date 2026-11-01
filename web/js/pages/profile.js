@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api, newIdempotencyKey } from '../api.js';
 import { state, refreshMe, logout } from '../store.js';
 import { icon } from '../ui/icons.js';
 import {
@@ -512,6 +512,7 @@ export default async function renderProfile(view, ctx) {
         try {
           await api('/reports', {
             method: 'POST',
+            idempotencyKey: newIdempotencyKey(),
             body: {
               target_type: type,
               target_id: Number(reportBtn.dataset.reportId),

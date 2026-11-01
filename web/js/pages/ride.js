@@ -1,4 +1,4 @@
-import { api, qrUrl } from '../api.js';
+import { api, newIdempotencyKey, qrUrl } from '../api.js';
 import { state, refreshMe } from '../store.js';
 import { icon } from '../ui/icons.js';
 import {
@@ -663,6 +663,7 @@ async function renderBooking(view, ctx) {
       try {
         const booking = await api('/bookings', {
           method: 'POST',
+          idempotencyKey: newIdempotencyKey(),
           body: {
             pickup: store.pickup.label,
             pickup_lat: store.pickup.lat,
@@ -1250,6 +1251,7 @@ async function renderRideDetail(view, ctx) {
       try {
         await api('/reports', {
           method: 'POST',
+          idempotencyKey: newIdempotencyKey(),
           body: { target_type: 'booking', target_id: booking.id, reason: reason.trim(), detail: `Ride ${booking.code}` },
         });
         toast('Report sent. Our safety desk will review it.');
@@ -1292,6 +1294,7 @@ async function renderRideDetail(view, ctx) {
       try {
         await api('/reports', {
           method: 'POST',
+          idempotencyKey: newIdempotencyKey(),
           body: {
             target_type: 'booking',
             target_id: booking.id,
@@ -1348,6 +1351,7 @@ async function renderRideDetail(view, ctx) {
       try {
         await api('/reports', {
           method: 'POST',
+          idempotencyKey: newIdempotencyKey(),
           body: { target_type: 'booking', target_id: booking.id, reason: reason.trim(), detail: `Ride ${booking.code}` },
         });
         toast('Report sent. Our safety desk will review it.');

@@ -1245,6 +1245,17 @@ export default async function renderAdmin(view, ctx) {
   /* Email & Google                                                    */
   /* ---------------------------------------------------------------- */
 
+  const outboxStatusPill = (message) => {
+    const status = String(message.status || '');
+    const attempts = Number(message.attempts || 0);
+    if (status === 'sent') return pill('Sent', 'green');
+    if (status === 'logged_offline') return pill('Logged offline', 'amber');
+    if (status === 'sending') return `${pill('Sending', 'amber')} <small class="text-muted">${plural(attempts, 'attempt')}</small>`;
+    if (status === 'queued') return `${pill('Queued', 'amber')} <small class="text-muted">${plural(attempts, 'attempt')}</small>`;
+    if (status === 'failed') return `${pill('Failed', 'red')} <small class="text-muted">${plural(attempts, 'attempt')}</small>`;
+    return pill(titleCase(status), 'soft');
+  };
+
   const paintEmail = () => {
     const host = bodyFor('email');
     if (!host) return;
@@ -1253,7 +1264,7 @@ export default async function renderAdmin(view, ctx) {
       return;
     }
 
-    const { config, total_sent, subscriber_count, outbox } = data.email || {};
+    const { config, total_sent, subscriber_count, outbox, queue } = data.email || {};
     const cfg = config || {};
     const isReady = Boolean(cfg.is_configured);
     const isVerified = Boolean(cfg.verified_at);
@@ -1355,7 +1366,7 @@ export default async function renderAdmin(view, ctx) {
         </div>
 
         <div class="panel email-outbox-panel">
-          ${sectionHead('Recent email outbox', { description: `${plural(outbox?.length || 0, 'recent message')} stored by the email service.` })}
+          ${sectionHead('Recent email outbox', { description: `${plural(outbox?.length || 0, 'recent message')} stored by the email service.${queue?.pending ? ` ${queue.pending} queued for retry.` : ''}${queue?.failed ? ` ${queue.failed} permanently failed.` : ''}` })}
           ${tableBlock(
             '<th>Time</th><th>Recipient</th><th>Subject</th><th>Template</th><th>Status</th><th class="actions-col">Actions</th>',
             (outbox || []).map((message) => `<tr>
@@ -1363,8 +1374,13 @@ export default async function renderAdmin(view, ctx) {
               <td><strong>${esc(message.recipient)}</strong></td>
               <td>${esc(message.subject)}</td>
               <td><span class="badge badge-soft">${esc(message.template)}</span></td>
-              <td>${message.status === 'sent' ? pill('Sent', 'green') : message.status === 'logged_offline' ? pill('Logged offline', 'amber') : pill(titleCase(message.status), 'red')}${message.error ? `<br><small class="text-muted">${esc(message.error)}</small>` : ''}</td>
-              <td class="actions-col">${rowActions(actionBtn('Delete', 'trash', `data-outbox-delete="${message.id}"`, 'btn-ghost btn-danger-text'))}</td>
+              <td>${outboxStatusPill(message)}${message.error ? `<br><small class="text-muted">${esc(message.error)}</small>` : ''}${message.next_attempt_at ? `<br><small class="text-muted">Next try ${esc(dateTime(message.next_attempt_at))}</small>` : ''}</td>
+              <td class="actions-col">${rowActions(
+                ['queued', 'failed', 'sending'].includes(message.status)
+                  ? actionBtn('Retry', 'refresh', `data-outbox-retry="${message.id}"`, 'btn-ghost')
+                  : '',
+                actionBtn('Delete', 'trash', `data-outbox-delete="${message.id}"`, 'btn-ghost btn-danger-text'),
+              )}</td>
             </tr>`).join(''),
             { icon: 'mail', title: 'No emails dispatched yet', text: 'When users register, book rides or subscribe, messages appear here.' },
           )}
@@ -2764,6 +2780,20 @@ export default async function renderAdmin(view, ctx) {
     }
   };
 
+  const retryOutbox = async (id) => {
+    try {
+      const result = await api(`/admin/email/outbox/${id}/retry`, { method: 'POST', body: {} });
+      if (result?.delivered) toast('Email delivered.');
+      else if (result?.already_sent) toast('That email was already sent.');
+      else if (result?.method === 'logged_offline') toast('Gmail is not connected — the message was written to data/emails.log.');
+      else if (result?.queued) toast(`Retry failed again. Next attempt in about ${Math.max(1, Math.round((result.retry_in_ms || 0) / 60000))} min.`);
+      else toast('Retry failed. Check the email settings.');
+      await reloadTab('email', { quiet: true });
+    } catch (error) {
+      toastError(error, 'Could not retry this email.');
+    }
+  };
+
   const deleteSubscriber = async (id) => {
     const ok = await confirmDelete('Remove this subscriber?', 'They will stop receiving newsletter updates.', 'Remove subscriber');
     if (!ok) return;
@@ -3035,6 +3065,11 @@ export default async function renderAdmin(view, ctx) {
       return;
     }
 
+    const outboxRetryBtn = event.target.closest('[data-outbox-retry]');
+    if (outboxRetryBtn) {
+      await retryOutbox(Number(outboxRetryBtn.dataset.outboxRetry));
+      return;
+    }
     const outboxDeleteBtn = event.target.closest('[data-outbox-delete]');
     if (outboxDeleteBtn) {
       await deleteOutbox(Number(outboxDeleteBtn.dataset.outboxDelete));

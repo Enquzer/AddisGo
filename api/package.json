@@ -13,6 +13,7 @@
     "dev": "node --watch server.js",
     "test": "node tests/smoke.js",
     "test:email": "node tests/email.js",
+    "test:hardening": "node tests/hardening.js",
     "test:ui": "node tests/browser.js",
     "check": "node tests/syntax.js"
   },

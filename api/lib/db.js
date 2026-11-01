@@ -34,10 +34,25 @@ export function openDatabase(file) {
     // Phase 2 — presence heartbeat. Sessions live in driver_sessions; this column
     // is the fast "is this driver still there?" check dispatch can read.
     ['drivers', 'last_heartbeat', 'TEXT'],
+    // Hardening — durable email queue with retry bookkeeping.
+    ['email_outbox', 'attempts', 'INTEGER NOT NULL DEFAULT 0'],
+    ['email_outbox', 'next_attempt_at', 'TEXT'],
+    ['email_outbox', 'last_attempt_at', 'TEXT'],
+    ['email_outbox', 'delivered_at', 'TEXT'],
+    ['email_outbox', 'payload', 'TEXT'],
+    ['email_outbox', 'updated_at', 'TEXT'],
   ]) {
     try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`); } catch { /* already present */ }
   }
+  // Indexes that depend on columns added by the ALTER loop above must be
+  // created afterwards, otherwise an older database fails to open.
+  try {
+    db.exec('CREATE INDEX IF NOT EXISTS idx_email_outbox_queue ON email_outbox(status, next_attempt_at, id);');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_request_keys_created ON request_keys(created_at);');
+  } catch { /* non-fatal */ }
   const wrapped = new Db(db);
+  // A crash mid-send must not strand a message forever.
+  wrapped.run("UPDATE email_outbox SET status = 'queued' WHERE status = 'sending'");
   ensureCmsDefaults(wrapped);
   // Phase 3 — give historical completed trips a ledger row once.
   backfillLedger(wrapped);

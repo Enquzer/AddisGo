@@ -1009,9 +1009,15 @@ export async function emailSettings(ctx) {
   requireAdmin(ctx);
   const { getEmailConfig } = await import('../lib/email.js');
   const config = getEmailConfig(ctx.db);
-  const outbox = ctx.db.all('SELECT * FROM email_outbox ORDER BY id DESC LIMIT 50');
+  const outbox = ctx.db.all(
+    `SELECT id, recipient, subject, template, status, error, attempts, next_attempt_at,
+            last_attempt_at, delivered_at, created_at
+       FROM email_outbox ORDER BY id DESC LIMIT 50`,
+  );
   const totalSent = Number(ctx.db.get("SELECT COUNT(*) AS n FROM email_outbox WHERE status IN ('sent', 'logged_offline')")?.n ?? 0);
   const subscriberCount = Number(ctx.db.get('SELECT COUNT(*) AS n FROM subscribers')?.n ?? 0);
+  const queued = Number(ctx.db.get("SELECT COUNT(*) AS n FROM email_outbox WHERE status IN ('queued', 'sending')")?.n ?? 0);
+  const failed = Number(ctx.db.get("SELECT COUNT(*) AS n FROM email_outbox WHERE status = 'failed'")?.n ?? 0);
 
   return {
     config: {
@@ -1030,6 +1036,7 @@ export async function emailSettings(ctx) {
     },
     total_sent: totalSent,
     subscriber_count: subscriberCount,
+    queue: { pending: queued, failed },
     outbox,
   };
 }
@@ -1137,6 +1144,21 @@ export async function deleteOutboxItem(ctx) {
   if (!found) throw AppError.notFound('Email log entry not found.');
   ctx.db.run('DELETE FROM email_outbox WHERE id = ?', [found.id]);
   return { ok: true };
+}
+
+/** Admin action: force one queued/failed message to be attempted again. */
+export async function retryOutboxItem(ctx) {
+  const admin = requireAdmin(ctx);
+  const { retryOutboxItem: retry } = await import('../lib/email.js');
+  const result = await retry(ctx.db, ctx.params.id);
+  if (!result) throw AppError.notFound('Email log entry not found.');
+  audit(
+    ctx.db,
+    admin.id,
+    'email.retried',
+    result.already_sent ? `Email #${ctx.params.id} was already sent` : `Retry requested for email #${ctx.params.id}`,
+  );
+  return result;
 }
 
 export async function deleteSubscriber(ctx) {
