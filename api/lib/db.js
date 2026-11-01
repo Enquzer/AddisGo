@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 
 import { AppError } from './errors.js';
+import { backfillLedger } from './revenue.js';
 import { CLASSES, addisTimeIn, nowIso, splitLanguages } from './util.js';
 
 const API_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -18,8 +19,28 @@ export function openDatabase(file) {
   try { db.exec('ALTER TABLE tours ADD COLUMN image_url TEXT NOT NULL DEFAULT ""'); } catch {}
   try { db.exec('ALTER TABLE events ADD COLUMN image_url TEXT NOT NULL DEFAULT ""'); } catch {}
   try { db.exec('ALTER TABLE notifications ADD COLUMN link TEXT NOT NULL DEFAULT ""'); } catch {}
+
+  // Phase 1 — dispatch supervision, punctuality and two-sided reputation.
+  // ADD COLUMN is used (not a table rebuild) so existing databases migrate in place.
+  for (const [table, column, ddl] of [
+    ['bookings', 'dispatch_state', "TEXT NOT NULL DEFAULT 'searching'"],
+    ['bookings', 'dispatch_round', 'INTEGER NOT NULL DEFAULT 0'],
+    ['bookings', 'dispatch_deadline', 'TEXT'],
+    ['bookings', 'promised_eta_min', 'INTEGER'],
+    ['bookings', 'arrived_at', 'TEXT'],
+    ['bookings', 'driver_release_count', 'INTEGER NOT NULL DEFAULT 0'],
+    ['users', 'rating', 'REAL NOT NULL DEFAULT 5.0'],
+    ['users', 'rating_count', 'INTEGER NOT NULL DEFAULT 0'],
+    // Phase 2 — presence heartbeat. Sessions live in driver_sessions; this column
+    // is the fast "is this driver still there?" check dispatch can read.
+    ['drivers', 'last_heartbeat', 'TEXT'],
+  ]) {
+    try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`); } catch { /* already present */ }
+  }
   const wrapped = new Db(db);
   ensureCmsDefaults(wrapped);
+  // Phase 3 — give historical completed trips a ledger row once.
+  backfillLedger(wrapped);
   return wrapped;
 }
 
@@ -41,6 +62,9 @@ function ensureCmsDefaults(db) {
     footer_note: 'Electric city rides, trusted local guides and small-group tours across Addis Ababa.',
     announcement: '',
     announcement_enabled: '0',
+    revenue_model: 'commission',
+    commission_rate: '15',
+    incentive_rate: '5',
   };
   for (const [key, value] of Object.entries(defaults)) {
     db.run('INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)', [key, value]);
@@ -146,6 +170,8 @@ export function mapPublic(row, prefix = '') {
     languages: splitLanguages(languages),
     avatar_color: row[`${p}avatar_color`] ?? '#145c45',
     is_verified: Boolean(row[`${p}is_verified`]),
+    rating: Number(row[`${p}rating`] ?? 5),
+    rating_count: Number(row[`${p}rating_count`] ?? 0),
   };
 }
 
@@ -180,9 +206,12 @@ export const BOOKING_SELECT = `SELECT
   b.rating AS rating, b.review AS review,
   b.created_at AS created_at, b.accepted_at AS accepted_at, b.started_at AS started_at,
   b.completed_at AS completed_at, b.cancelled_at AS cancelled_at,
+  b.dispatch_state AS dispatch_state, b.dispatch_round AS dispatch_round,
+  b.dispatch_deadline AS dispatch_deadline, b.promised_eta_min AS promised_eta_min,
+  b.arrived_at AS arrived_at, b.driver_release_count AS driver_release_count,
   cu.id AS cust_id, cu.name AS cust_name, cu.role AS cust_role, cu.bio AS cust_bio,
   cu.languages AS cust_languages, cu.avatar_color AS cust_avatar, cu.is_verified AS cust_verified,
-  cu.phone AS cust_phone,
+  cu.phone AS cust_phone, cu.rating AS cust_rating, cu.rating_count AS cust_rating_count,
   d.id AS drv_id, d.user_id AS drv_user_id, du.name AS drv_name, du.avatar_color AS drv_avatar,
   d.rating AS drv_rating, d.rating_count AS drv_rating_count, d.trips AS drv_trips,
   d.vehicle_class AS drv_class, d.make_model AS drv_model, d.plate AS drv_plate,
@@ -236,6 +265,15 @@ export function mapBooking(row) {
     started_at: row.started_at,
     completed_at: row.completed_at,
     cancelled_at: row.cancelled_at,
+    promised_eta_min: row.promised_eta_min ?? null,
+    arrived_at: row.arrived_at ?? null,
+    arrival_delay_min: arrivalDelay(row),
+    dispatch: {
+      state: row.dispatch_state ?? 'searching',
+      round: Number(row.dispatch_round ?? 0),
+      deadline: row.dispatch_deadline ?? null,
+      driver_releases: Number(row.driver_release_count ?? 0),
+    },
     customer: mapPublic(row, 'cust'),
     customer_phone: row.cust_phone,
     driver,
@@ -243,8 +281,16 @@ export function mapBooking(row) {
   };
 }
 
+/** Minutes late vs the ETA promised when the driver accepted. Negative = early. */
+function arrivalDelay(row) {
+  if (!row.accepted_at || !row.arrived_at || row.promised_eta_min == null) return null;
+  const elapsed = (Date.parse(row.arrived_at) - Date.parse(row.accepted_at)) / 60000;
+  if (!Number.isFinite(elapsed)) return null;
+  return Math.round(elapsed - Number(row.promised_eta_min));
+}
+
 export const DRIVER_COLUMNS = `id, user_id, vehicle_class, make_model, plate, color, license_no, status,
-  is_online, lat, lng, rating, rating_count, trips, created_at, approved_at`;
+  is_online, lat, lng, rating, rating_count, trips, last_heartbeat, created_at, approved_at`;
 
 export function mapDriverRow(row) {
   return {
@@ -262,6 +308,7 @@ export function mapDriverRow(row) {
     rating: Number(row.rating ?? 5),
     rating_count: Number(row.rating_count ?? 0),
     trips: Number(row.trips ?? 0),
+    last_heartbeat: row.last_heartbeat ?? null,
     created_at: row.created_at,
     approved_at: row.approved_at,
   };

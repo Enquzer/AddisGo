@@ -202,6 +202,31 @@ replace the demo accounts.
 
 Values can also be placed in a `.env` file in the project root (loaded on start).
 
+### Gmail / email delivery
+
+Out of the box AddisGo writes outgoing mail to `data/emails.log` so the app works
+without any credentials. To deliver real email through a personal or Workspace
+Gmail account:
+
+1. Sign in to the Google account AddisGo should send from.
+2. Turn on **2-Step Verification**: <https://myaccount.google.com/security>.
+3. Open **App passwords**: <https://myaccount.google.com/apppasswords>.
+4. Create an app password named `AddisGo` and copy the 16 letters.
+5. In the app open **Admin → Email & Google**, enter the Gmail address and the
+   app password, then press **Verify & save**.
+6. Send a test email from the same screen.
+
+The server stores the credentials in the `meta` table (`smtp_user`, `smtp_pass`,
+`smtp_host`, `smtp_port`, `smtp_from`) and always uses `smtp.gmail.com` on port
+465 for Gmail addresses. Spaces in an app password are removed automatically.
+Verification calls Google's SMTP server without sending mail; failures are
+shown with an actionable reason (wrong app password, blocked port, TLS, etc.).
+Use **Disconnect Gmail** to remove the stored credentials and return to the
+local dev log.
+
+Environment variables `SMTP_USER`, `SMTP_PASS`, `SMTP_HOST`, `SMTP_PORT` and
+`SMTP_FROM` are used as fallbacks when nothing is saved in the admin screen.
+
 ---
 
 ## Tests
@@ -209,7 +234,10 @@ Values can also be placed in a `.env` file in the project root (loaded on start)
 Start the server first, then:
 
 ```bash
-node api/tests/smoke.js              # 64-check end-to-end API suite
+node api/tests/smoke.js              # 68-check end-to-end API suite
+node api/tests/email.js              # Gmail config, verification and fallback checks
+node api/tests/phase1.js             # ratings, cancellations and dispatch checks
+node api/tests/phase2plus.js         # presence, revenue, analytics and area checks
 node api/tests/browser.js            # headless Chrome UI suite (71 checks)
 node api/tests/syntax.js             # parses every frontend module
 ```
@@ -222,9 +250,9 @@ tour). Delete `data/addisgo.db*` and restart to get pristine demo data again.
 the browser with `ADDISGO_CHROME=<path>` and the target with
 `ADDISGO_BASE=http://localhost:3004`.
 
-`npm test --prefix api` runs the smoke suite, `npm run test:ui --prefix api` the UI
-suite and `npm run check --prefix api` the parser check — all without extra
-dependencies.
+`npm test --prefix api` runs the smoke suite, `npm run test:email --prefix api` the
+Gmail suite, `npm run test:ui --prefix api` the UI suite and
+`npm run check --prefix api` the parser check — all without extra dependencies.
 
 ---
 

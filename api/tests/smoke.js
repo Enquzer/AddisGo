@@ -252,7 +252,7 @@ async function main() {
   const adminTours = await admin.get('/api/admin/tours');
   check('GET /api/admin/tours -> 200', adminTours.status === 200 && Array.isArray(adminTours.data?.tours));
 
-  const audit = await admin.get('/api/admin/audit');
+  const audit = await admin.get('/api/admin/audit?limit=500');
   check('GET /api/admin/audit -> 200', audit.status === 200 && (audit.data?.audit || []).length >= 1);
   check('audit records driver approval', (audit.data?.audit || []).some((a) => a.action === 'driver.status_changed'));
 

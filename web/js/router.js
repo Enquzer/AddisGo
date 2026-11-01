@@ -1,4 +1,5 @@
 import { state } from './store.js';
+import { trackPageview } from './analytics.js';
 import { setActiveNav, errorBlock } from './ui/layout.js';
 import { scrollToTop } from './ui/dom.js';
 import { toast } from './ui/toast.js';
@@ -140,6 +141,7 @@ export async function render() {
       user: state.user,
     });
     activeCleanup = typeof cleanup === 'function' ? cleanup : null;
+    trackPageview(raw);
     scrollToTop('instant');
     try { view.focus({ preventScroll: true }); } catch { /* ignore */ }
   } catch (error) {

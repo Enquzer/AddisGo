@@ -27,8 +27,10 @@ export function toast(message, { type = 'success', duration = 4200 } = {}) {
   };
   node.querySelector('.toast-close')?.addEventListener('click', remove);
   container.append(node);
-  const timer = window.setTimeout(remove, Math.max(1500, duration));
-  node.addEventListener('mouseenter', () => window.clearTimeout(timer), { once: true });
+  // Toasts are notifications, not controls: the panel is click-through so it can
+  // never cover a dialog button, and they always dismiss on their own. (They used
+  // to stop their timer forever on hover, which left them stuck over the UI.)
+  window.setTimeout(remove, Math.max(1500, duration));
   return remove;
 }
 

@@ -12,6 +12,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node tests/smoke.js",
+    "test:email": "node tests/email.js",
     "test:ui": "node tests/browser.js",
     "check": "node tests/syntax.js"
   },

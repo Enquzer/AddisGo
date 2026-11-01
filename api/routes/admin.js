@@ -2,8 +2,12 @@ import { AppError } from '../lib/errors.js';
 import { requireAdmin } from '../lib/context.js';
 import { BOOKING_SELECT, audit, mapBooking, notify, tourView } from '../lib/db.js';
 import { hashPassword } from '../lib/security.js';
+import { closeSession, fleetAirtime } from '../lib/sessions.js';
+import { revenueSummary, saveRevenueConfig, settleBooking } from '../lib/revenue.js';
+import { demandCells } from '../lib/geocell.js';
+import { analyticsSummary } from '../lib/webstats.js';
 import {
-  avatarColorFor, charLen, isoFrom, nowIso, round1, todayUtc, validColor, validEmail, validPhone,
+  avatarColorFor, charLen, daysAgo, isoFrom, nowIso, round1, todayUtc, validColor, validEmail, validPhone,
 } from '../lib/util.js';
 
 const ADMIN_DRIVER_SELECT = `SELECT d.id, d.user_id, u.name, u.email, u.phone, u.avatar_color,
@@ -186,6 +190,346 @@ export async function overview(ctx) {
   };
 }
 
+export async function insights(ctx) {
+  requireAdmin(ctx);
+  const requestedDays = Number(ctx.query.get('days'));
+  const days = Number.isFinite(requestedDays) && requestedDays > 0 ? Math.min(Math.round(requestedDays), 365) : 30;
+  const since = daysAgo(days);
+  const scalar = (sql, params = []) => Number(ctx.db.get(sql, params)?.n ?? 0);
+
+  /* --- Cancellations ---------------------------------------------------- */
+  const cancelRows = ctx.db.all(
+    `SELECT reason_code, blame_party, cancelled_by_role, COUNT(*) AS n
+       FROM cancellations
+      WHERE created_at >= ?
+      GROUP BY reason_code, blame_party, cancelled_by_role
+      ORDER BY n DESC`,
+    [since],
+  );
+  const cancellationTotal = cancelRows.reduce((sum, row) => sum + Number(row.n), 0);
+  const byReason = cancelRows.map((row) => ({
+    code: row.reason_code,
+    blame: row.blame_party,
+    role: row.cancelled_by_role,
+    count: Number(row.n),
+    share: cancellationTotal ? round1((Number(row.n) / cancellationTotal) * 100) : 0,
+  }));
+  const byBlame = { rider: 0, driver: 0, platform: 0, none: 0 };
+  const byRole = { rider: 0, driver: 0, admin: 0, system: 0 };
+  for (const row of cancelRows) {
+    byBlame[row.blame_party] = (byBlame[row.blame_party] ?? 0) + Number(row.n);
+    byRole[row.cancelled_by_role] = (byRole[row.cancelled_by_role] ?? 0) + Number(row.n);
+  }
+
+  /* --- Ratings ---------------------------------------------------------- */
+  const ratingRows = ctx.db.all(
+    `SELECT overall, COUNT(*) AS n
+       FROM ratings
+      WHERE created_at >= ? AND rater_role = 'rider'
+      GROUP BY overall`,
+    [since],
+  );
+  const ratingDist = [5, 4, 3, 2, 1].map((stars) => ({
+    stars,
+    count: Number(ratingRows.find((row) => Number(row.overall) === stars)?.n ?? 0),
+  }));
+  const ratingTotal = ratingDist.reduce((sum, row) => sum + row.count, 0);
+  const avgOverall = ctx.db.get(
+    `SELECT AVG(overall) AS avg FROM ratings WHERE created_at >= ? AND rater_role = 'rider'`,
+    [since],
+  );
+
+  const aspectRow = ctx.db.get(
+    `SELECT AVG(car_condition) AS car_condition, AVG(comfort) AS comfort,
+            AVG(cleanliness) AS cleanliness, AVG(service) AS service,
+            AVG(safety) AS safety, AVG(punctuality) AS punctuality
+       FROM ratings
+      WHERE created_at >= ? AND rater_role = 'rider'`,
+    [since],
+  );
+  const aspects = ['car_condition', 'comfort', 'cleanliness', 'service', 'safety', 'punctuality']
+    .map((key) => ({
+      key,
+      avg: aspectRow?.[key] == null ? null : round1(Number(aspectRow[key])),
+    }));
+
+  const tagCounts = new Map();
+  for (const row of ctx.db.all(
+    `SELECT tags FROM ratings WHERE created_at >= ? AND rater_role = 'rider'`,
+    [since],
+  )) {
+    let list = [];
+    try { list = JSON.parse(row.tags || '[]'); } catch { list = []; }
+    for (const tag of list) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+  }
+  const topTags = [...tagCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([code, count]) => ({ code, count }));
+
+  /* --- Punctuality (measured, not asked) -------------------------------- */
+  const punct = ctx.db.get(
+    `SELECT AVG((julianday(arrived_at) - julianday(accepted_at)) * 1440 - promised_eta_min) AS avg_delay,
+            COUNT(*) AS n
+       FROM bookings
+      WHERE accepted_at IS NOT NULL AND arrived_at IS NOT NULL
+        AND promised_eta_min IS NOT NULL AND created_at >= ?`,
+    [since],
+  );
+
+  /* --- Demand ----------------------------------------------------------- */
+  const hourRows = ctx.db.all(
+    `SELECT CAST(substr(created_at, 12, 2) AS INTEGER) AS hour, COUNT(*) AS n
+       FROM bookings WHERE created_at >= ? GROUP BY hour ORDER BY hour`,
+    [since],
+  );
+  const byHour = Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    count: Number(hourRows.find((row) => Number(row.hour) === hour)?.n ?? 0),
+  }));
+  const peak = byHour.reduce((best, row) => (row.count > best.count ? row : best), { hour: 0, count: 0 });
+
+  // Phase 4 — geohash cells (~1.2 km) replace the old rounded-coordinate grid.
+  const cells = demandCells(ctx.db, { since, days });
+  const areas = cells.cells.map((cell) => ({
+    cell: cell.cell,
+    lat: cell.lat,
+    lng: cell.lng,
+    sample: cell.sample,
+    requests: cell.requests,
+    completed: cell.completed,
+    cancelled: cell.cancelled,
+    active: cell.active,
+    gross: cell.gross,
+    avg_fare: cell.avg_fare,
+    success_rate: cell.success_rate,
+    request_share: cell.request_share,
+    gross_share: cell.gross_share,
+    success_delta: cell.success_delta,
+    pressure: cell.pressure,
+    surge: cell.surge,
+    online_drivers: cell.online_drivers,
+    peak_hour: cell.peak_hour,
+  }));
+
+  /* --- Fleet presence / air-time (Phase 2) ------------------------------ */
+  const fleet = fleetAirtime(ctx.db, since);
+
+  /* --- People ----------------------------------------------------------- */
+  const roleRows = ctx.db.all('SELECT role, COUNT(*) AS n FROM users GROUP BY role');
+  const roles = { customer: 0, driver: 0, admin: 0 };
+  for (const row of roleRows) roles[row.role] = Number(row.n);
+
+  const languageRows = ctx.db.all(
+    `SELECT languages FROM users WHERE role = 'customer'`,
+  );
+  const languageCounts = new Map();
+  for (const row of languageRows) {
+    for (const part of String(row.languages || '').split(',')) {
+      const name = part.trim();
+      if (!name) continue;
+      languageCounts.set(name, (languageCounts.get(name) ?? 0) + 1);
+    }
+  }
+  const languages = [...languageCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([name, count]) => ({ name, count }));
+
+  const newUsers = scalar('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?', [since]);
+  const verifiedRiders = scalar(
+    "SELECT COUNT(*) AS n FROM users WHERE role = 'customer' AND is_verified = 1",
+  );
+
+  // Request frequency: how many completed rides did each rider take in the window?
+  const frequencyRows = ctx.db.all(
+    `SELECT customer_id, COUNT(*) AS n FROM bookings
+      WHERE status = 'completed' AND created_at >= ?
+      GROUP BY customer_id`,
+    [since],
+  );
+  const buckets = { once: 0, '2-5': 0, '6-10': 0, '10+': 0 };
+  for (const row of frequencyRows) {
+    const n = Number(row.n);
+    if (n <= 1) buckets.once += 1;
+    else if (n <= 5) buckets['2-5'] += 1;
+    else if (n <= 10) buckets['6-10'] += 1;
+    else buckets['10+'] += 1;
+  }
+  const ridersWithTrips = frequencyRows.length;
+  const ridesTotal = frequencyRows.reduce((sum, row) => sum + Number(row.n), 0);
+
+  const topDrivers = ctx.db.all(
+    `SELECT d.id, u.name, d.rating, d.rating_count, d.trips, d.vehicle_class, d.is_online
+       FROM drivers d JOIN users u ON u.id = d.user_id
+      WHERE d.status = 'approved'
+      ORDER BY d.rating DESC, d.rating_count DESC
+      LIMIT 5`,
+  ).map((row) => ({
+    id: row.id,
+    name: row.name,
+    rating: round1(Number(row.rating)),
+    rating_count: Number(row.rating_count),
+    trips: Number(row.trips),
+    vehicle_class: row.vehicle_class,
+    is_online: Boolean(row.is_online),
+  }));
+  /* --- Fulfilment ------------------------------------------------------- */
+  const statusRows = ctx.db.all(
+    'SELECT status, COUNT(*) AS n FROM bookings WHERE created_at >= ? GROUP BY status',
+    [since],
+  );
+  const funnel = {};
+  for (const row of statusRows) funnel[row.status] = Number(row.n);
+  const totalRequests = statusRows.reduce((sum, row) => sum + Number(row.n), 0);
+  const noDriverFound = scalar(
+    "SELECT COUNT(*) AS n FROM bookings WHERE created_at >= ? AND dispatch_state = 'failed'",
+    [since],
+  );
+  const redispatchCount = scalar(
+    "SELECT COUNT(*) AS n FROM cancellations WHERE created_at >= ? AND outcome = 'redispatch'",
+    [since],
+  );
+
+  /* --- People ----------------------------------------------------------- */
+  const topRiders = ctx.db.all(
+    `SELECT u.id, u.name, u.rating, u.rating_count, COUNT(b.id) AS trips
+       FROM users u
+       LEFT JOIN bookings b
+         ON b.customer_id = u.id AND b.status = 'completed' AND b.created_at >= ?
+      WHERE u.role = 'customer'
+      GROUP BY u.id
+      ORDER BY trips DESC, u.id ASC
+      LIMIT 5`,
+    [since],
+  ).map((row) => ({
+    id: row.id,
+    name: row.name,
+    rating: round1(Number(row.rating)),
+    rating_count: Number(row.rating_count),
+    trips: Number(row.trips),
+  }));
+
+  const riderScores = ctx.db.get(
+    "SELECT AVG(rating) AS avg, COUNT(*) AS n FROM users WHERE role = 'customer' AND rating_count > 0",
+  );
+
+  return {
+    window_days: days,
+    since,
+    requests: {
+      total: totalRequests,
+      completed: funnel.completed ?? 0,
+      cancelled: funnel.cancelled ?? 0,
+      active: (funnel.requested ?? 0) + (funnel.accepted ?? 0) + (funnel.arriving ?? 0) + (funnel.in_progress ?? 0),
+      no_driver_found: noDriverFound,
+      cancellation_rate: totalRequests ? round1(((funnel.cancelled ?? 0) / totalRequests) * 100) : 0,
+    },
+    cancellations: {
+      total: cancellationTotal,
+      by_reason: byReason,
+      by_blame: byBlame,
+      by_role: byRole,
+      redispatched: redispatchCount,
+    },
+    ratings: {
+      total: ratingTotal,
+      average: avgOverall?.avg == null ? null : round1(Number(avgOverall.avg)),
+      distribution: ratingDist,
+      aspects,
+      tags: topTags,
+      rider_average: riderScores?.avg == null ? null : round1(Number(riderScores.avg)),
+      riders_rated: Number(riderScores?.n ?? 0),
+    },
+    punctuality: {
+      average_delay_min: punct?.avg_delay == null ? null : round1(Number(punct.avg_delay)),
+      sample: Number(punct?.n ?? 0),
+    },
+    demand: {
+      by_hour: byHour,
+      peak_hour: peak.count ? peak.hour : null,
+      areas,
+      cells: cells.cells,
+      heatmap: cells.heatmap,
+      by_revenue: cells.by_revenue,
+      totals: cells.totals,
+      surge_suggestions: cells.surge_suggestions,
+      online_supply: cells.online_supply,
+      cells_covered: cells.cells_covered,
+    },
+    fleet: {
+      online_now: fleet.online_now,
+      sessions: fleet.sessions,
+      app_closed_sessions: fleet.app_closed_sessions,
+      app_closed_share: fleet.app_closed_share,
+      online_minutes: fleet.online_minutes,
+      idle_minutes: fleet.idle_minutes,
+      avg_session_minutes: fleet.avg_session_minutes,
+      avg_idle_minutes: fleet.avg_idle_minutes,
+      acceptance_rate: fleet.acceptance_rate,
+      offers: fleet.offers,
+      accepted_offers: fleet.accepted_offers,
+      declined_offers: fleet.declined_offers,
+      drivers: fleet.drivers,
+    },
+    demographics: {
+      roles,
+      languages,
+      new_users: newUsers,
+      verified_riders: verifiedRiders,
+      riders_with_trips: ridersWithTrips,
+      avg_rides_per_rider: ridersWithTrips ? round1(ridesTotal / ridersWithTrips) : 0,
+      frequency: [
+        { bucket: 'once', riders: buckets.once },
+        { bucket: '2-5', riders: buckets['2-5'] },
+        { bucket: '6-10', riders: buckets['6-10'] },
+        { bucket: '10+', riders: buckets['10+'] },
+      ],
+    },
+    top_drivers: topDrivers,
+    top_riders: topRiders,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Revenue (Phase 3)                                                   */
+/* ------------------------------------------------------------------ */
+
+export async function revenue(ctx) {
+  requireAdmin(ctx);
+  const requested = Number(ctx.query.get('days'));
+  const days = Number.isFinite(requested) && requested > 0 ? Math.min(Math.round(requested), 365) : 30;
+  return revenueSummary(ctx.db, { days });
+}
+
+export async function updateRevenue(ctx) {
+  const auth = requireAdmin(ctx);
+  const body = ctx.body ?? {};
+  const config = saveRevenueConfig(ctx.db, {
+    model: body.model,
+    commission_rate: body.commission_rate,
+    incentive_rate: body.incentive_rate,
+  });
+  audit(
+    ctx.db,
+    auth.id,
+    'revenue.updated',
+    `Revenue model set to ${config.model} · commission ${config.commission_rate}% · incentive ${config.incentive_rate}%`,
+  );
+  return { config };
+}
+
+/* ------------------------------------------------------------------ */
+/* Website audience (Phase 5)                                          */
+/* ------------------------------------------------------------------ */
+
+export async function analytics(ctx) {
+  requireAdmin(ctx);
+  const requested = Number(ctx.query.get('days'));
+  const days = Number.isFinite(requested) && requested > 0 ? Math.min(Math.round(requested), 365) : 30;
+  return analyticsSummary(ctx.db, { days });
+}
+
 export async function drivers(ctx) {
   requireAdmin(ctx);
   const status = ctx.query.get('status');
@@ -232,6 +576,8 @@ export async function updateDriver(ctx) {
   if (nextStatus === 'approved') {
     ctx.db.run('UPDATE users SET is_verified = 1 WHERE id = ?', [found.user_id]);
   }
+  // A suspended driver must stop receiving offers immediately.
+  if (nextStatus !== 'approved') closeSession(ctx.db, found.id, 'suspended');
   if (nextStatus !== found.status) {
     if (nextStatus === 'approved') {
       notify(
@@ -402,6 +748,8 @@ export async function updateUser(ctx) {
   if (next.status && next.status !== found.status) {
     if (next.status === 'suspended') {
       ctx.db.run('UPDATE drivers SET is_online = 0 WHERE user_id = ?', [found.id]);
+      const driverRow = ctx.db.get('SELECT id FROM drivers WHERE user_id = ?', [found.id]);
+      if (driverRow) closeSession(ctx.db, driverRow.id, 'suspended');
     }
     notify(
       ctx.db,
@@ -532,6 +880,15 @@ export async function updateBooking(ctx) {
     notify(ctx.db, booking.customer.id, 'ride', 'Ride cancelled', 'An AddisGo operator cancelled this ride. Any charge is released.', `#/ride/${booking.id}`);
   }
 
+  if (next.status === 'completed' && booking.status !== 'completed') {
+    settleBooking(ctx.db, {
+      id: booking.id,
+      fare: next.fare ?? booking.fare,
+      driver_id: booking.driver?.id ?? null,
+      customer_id: booking.customer?.id ?? null,
+    });
+  }
+
   audit(
     ctx.db,
     auth.id,
@@ -623,12 +980,21 @@ export async function resolveReport(ctx) {
 
 export async function auditLog(ctx) {
   requireAdmin(ctx);
+  const requested = Number(ctx.query.get('limit'));
+  const limit = Number.isFinite(requested) && requested > 0 ? Math.min(Math.round(requested), 500) : 120;
+  const action = String(ctx.query.get('action') || '').trim();
+  const params = [];
+  let sql = `SELECT a.id, a.action, a.detail, a.created_at, u.name AS actor_name
+         FROM audit_log a JOIN users u ON u.id = a.actor_id`;
+  if (action) {
+    sql += ' WHERE a.action = ?';
+    params.push(action);
+  }
+  sql += ' ORDER BY a.id DESC LIMIT ?';
+  params.push(limit);
   return {
     audit: ctx.db
-      .all(
-        `SELECT a.id, a.action, a.detail, a.created_at, u.name AS actor_name
-         FROM audit_log a JOIN users u ON u.id = a.actor_id ORDER BY a.id DESC LIMIT 120`,
-      )
+      .all(sql, params)
       .map((row) => ({
         id: row.id,
         action: row.action,
@@ -653,8 +1019,14 @@ export async function emailSettings(ctx) {
       port: config.port,
       user: config.user,
       from: config.from,
+      gmail: config.gmail,
       is_configured: config.is_configured,
+      password_set: config.password_set,
+      password_format_ok: config.password_format_ok,
       masked_pass: config.masked_pass,
+      verified_at: config.verified_at,
+      last_test_at: config.last_test_at,
+      last_error: config.last_error,
     },
     total_sent: totalSent,
     subscriber_count: subscriberCount,
@@ -665,16 +1037,71 @@ export async function emailSettings(ctx) {
 export async function setEmailSettings(ctx) {
   const admin = requireAdmin(ctx);
   const { saveEmailConfig } = await import('../lib/email.js');
-  const body = ctx.body;
+  const body = ctx.body || {};
+
+  const user = body.user === undefined ? undefined : String(body.user).trim();
+  if (user !== undefined && user !== '' && !validEmail(user)) {
+    throw AppError.bad('Enter a valid email address, for example yourname@gmail.com.');
+  }
+
   const updated = saveEmailConfig(ctx.db, {
-    user: body.user,
+    user,
     pass: body.pass,
     from: body.from,
     host: body.host,
     port: body.port,
   });
   audit(ctx.db, admin.id, 'email.settings_updated', `Google SMTP configuration updated for ${updated.user || 'none'}`);
-  return { ok: true, config: updated };
+
+  let verification = null;
+  let config = updated;
+  if (body.verify) {
+    const { getEmailConfig, verifyEmailConfig } = await import('../lib/email.js');
+    verification = await verifyEmailConfig(ctx.db);
+    config = getEmailConfig(ctx.db);
+    audit(
+      ctx.db,
+      admin.id,
+      'email.verified',
+      verification.ok
+        ? `Google SMTP verified for ${config.user}`
+        : `Google SMTP verification failed for ${config.user}: ${verification.code}`,
+    );
+  }
+
+  return { ok: true, config, verification };
+}
+
+export async function verifyEmailSettings(ctx) {
+  const admin = requireAdmin(ctx);
+  const { verifyEmailConfig } = await import('../lib/email.js');
+  const body = ctx.body || {};
+
+  const verification = await verifyEmailConfig(ctx.db, {
+    user: body.user,
+    pass: body.pass,
+    host: body.host,
+    port: body.port,
+  });
+
+  audit(
+    ctx.db,
+    admin.id,
+    verification.ok ? 'email.verified' : 'email.verify_failed',
+    verification.ok
+      ? `Google SMTP verified for ${verification.user}`
+      : `Google SMTP verification failed for ${verification.user || 'none'}: ${verification.code}`,
+  );
+
+  return verification;
+}
+
+export async function disconnectEmail(ctx) {
+  const admin = requireAdmin(ctx);
+  const { clearEmailConfig } = await import('../lib/email.js');
+  const config = clearEmailConfig(ctx.db);
+  audit(ctx.db, admin.id, 'email.disconnected', 'Stored Google SMTP credentials removed');
+  return { ok: true, config };
 }
 
 export async function testEmailSend(ctx) {

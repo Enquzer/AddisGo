@@ -1,6 +1,14 @@
 import { AppError } from '../lib/errors.js';
 import { requireDriver, requireUser } from '../lib/context.js';
 import { BOOKING_SELECT, driverForUser, getDriver, getSelfUser, mapBooking } from '../lib/db.js';
+import { driverEarnings, getRevenueConfig } from '../lib/revenue.js';
+import {
+  closeSession,
+  closeStaleSessions,
+  driverAirtime,
+  heartbeat as recordHeartbeat,
+  openSession,
+} from '../lib/sessions.js';
 import {
   classInfo,
   haversineKm,
@@ -60,27 +68,17 @@ export async function nearby(ctx) {
 
 export async function driverMe(ctx) {
   const auth = requireDriver(ctx);
+  closeStaleSessions(ctx.db);
   const driver = driverForUser(ctx.db, auth.id);
   if (!driver) throw AppError.notFound('Driver profile not found.');
 
-  const today = todayUtc();
   const weekAgo = isoFrom(Date.now() - 7 * 86400000);
-
-  const sum = (sql, params) => Number(ctx.db.get(sql, params).total ?? 0);
   const count = (sql, params) => Number(ctx.db.get(sql, params).n ?? 0);
 
-  const earningsToday = sum(
-    "SELECT COALESCE(SUM(fare), 0) AS total FROM bookings WHERE driver_id = ? AND status = 'completed' AND substr(completed_at, 1, 10) = ?",
-    [driver.id, today],
-  );
-  const earningsWeek = sum(
-    "SELECT COALESCE(SUM(fare), 0) AS total FROM bookings WHERE driver_id = ? AND status = 'completed' AND completed_at >= ?",
-    [driver.id, weekAgo],
-  );
-  const earningsTotal = sum(
-    "SELECT COALESCE(SUM(fare), 0) AS total FROM bookings WHERE driver_id = ? AND status = 'completed'",
-    [driver.id],
-  );
+  const earnings = driverEarnings(ctx.db, driver.id);
+  const airtime = driverAirtime(ctx.db, driver.id, weekAgo);
+  const revenue = getRevenueConfig(ctx.db);
+
   const activeBookings = count(
     "SELECT COUNT(*) AS n FROM bookings WHERE driver_id = ? AND status IN ('accepted', 'arriving', 'in_progress')",
     [driver.id],
@@ -92,13 +90,40 @@ export async function driverMe(ctx) {
 
   return {
     driver,
+    revenue_model: revenue,
     stats: {
-      earnings_today: earningsToday,
-      earnings_week: earningsWeek,
-      earnings_total: earningsTotal,
+      // Take-home (ledger), not gross fares. Gross is exposed alongside it.
+      earnings_today: earnings.earnings_today,
+      earnings_week: earnings.earnings_week,
+      earnings_total: earnings.earnings_total,
+      gross_today: earnings.gross_today,
+      gross_week: earnings.gross_week,
+      gross_total: earnings.gross_total,
+      commission_today: earnings.commission_today,
+      commission_week: earnings.commission_week,
+      commission_total: earnings.commission_total,
+      incentive_today: earnings.incentive_today,
+      incentive_week: earnings.incentive_week,
+      incentive_total: earnings.incentive_total,
+      trips_today: earnings.trips_today,
       trips_total: driver.trips,
       active_bookings: activeBookings,
       requests_available: requestsAvailable,
+      // Phase 2 — presence and air-time (rolling 7 days).
+      online_minutes_week: airtime.online_minutes,
+      busy_minutes_week: airtime.busy_minutes,
+      idle_minutes_week: airtime.idle_minutes,
+      avg_session_minutes_week: airtime.avg_session_minutes,
+      longest_session_minutes_week: airtime.longest_session_minutes,
+      sessions_week: airtime.sessions,
+      app_closed_week: airtime.app_closed_sessions,
+      offline_sessions_week: airtime.offline_sessions,
+      online_since: airtime.online_since,
+      acceptance_rate: airtime.acceptance_rate,
+      offers_week: airtime.offers,
+      accepted_offers_week: airtime.accepted_offers,
+      declined_offers_week: airtime.declined_offers,
+      last_heartbeat: driver.last_heartbeat ?? null,
     },
   };
 }
@@ -126,13 +151,47 @@ export async function setStatus(ctx) {
     lng = wantedLng == null ? null : Number(wantedLng);
   }
 
-  ctx.db.run('UPDATE drivers SET is_online = ?, lat = ?, lng = ? WHERE id = ?', [
+  const at = nowIso();
+  ctx.db.run('UPDATE drivers SET is_online = ?, lat = ?, lng = ?, last_heartbeat = ? WHERE id = ?', [
     online ? 1 : 0,
     lat,
     lng,
+    online ? at : null,
     driver.id,
   ]);
-  return getDriver(ctx.db, driver.id);
+
+  // Keep the session ledger in sync: going online opens (or resumes) a shift,
+  // going offline closes it so air-time stops accruing immediately.
+  let session = null;
+  if (online) {
+    session = openSession(ctx.db, driver.id, { lat, lng });
+  } else {
+    closeSession(ctx.db, driver.id, 'offline');
+  }
+
+  return {
+    ...getDriver(ctx.db, driver.id),
+    session,
+    heartbeat_ms: 25_000,
+  };
+}
+
+/**
+ * Presence beat. The driver dashboard posts this on a timer while it is open;
+ * dispatch treats a silent phone as offline after two missed beats.
+ */
+export async function heartbeat(ctx) {
+  const auth = requireDriver(ctx);
+  const driver = driverForUser(ctx.db, auth.id);
+  if (!driver) throw AppError.notFound('Driver profile not found.');
+  if (driver.status !== 'approved') throw AppError.forbidden('Your driver application is still being reviewed.');
+  if (!driver.is_online) return { online: false, heartbeat_ms: 25_000 };
+
+  const lat = ctx.body.lat == null ? null : Number(ctx.body.lat);
+  const lng = ctx.body.lng == null ? null : Number(ctx.body.lng);
+  const useCoords = lat != null && lng != null && validCoords(lat, lng);
+  const beat = recordHeartbeat(ctx.db, driver.id, useCoords ? { lat, lng } : {});
+  return { online: true, ...beat, heartbeat_ms: 25_000 };
 }
 
 export async function updateProfile(ctx) {

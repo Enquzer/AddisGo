@@ -1,6 +1,7 @@
 import { AppError } from '../lib/errors.js';
 import { requireUser } from '../lib/context.js';
 import { audit, notifications as listNotifications, notify } from '../lib/db.js';
+import { analyticsSummary, recordAnalytics } from '../lib/webstats.js';
 import { charLen, nowIso, round1 } from '../lib/util.js';
 
 export async function health() {
@@ -28,6 +29,33 @@ export async function publicStats(ctx) {
     trips_completed: tripsCompleted,
     avg_rating: round1(Number(row?.avg ?? 5)),
   };
+}
+
+/* --- Phase 5: privacy-safe website analytics --------------------------- */
+
+/**
+ * Public beacon. Accepts only a path, a referrer and an event name; nothing
+ * identifying is read or stored. Rate-limited per socket address (kept in
+ * memory only, never written to the database).
+ */
+export async function trackAnalytics(ctx) {
+  const key = ctx.req?.socket?.remoteAddress || 'anonymous';
+  if (!ctx.limiter.allow(`analytics:${key}`, 120, 60000)) {
+    return { ok: true, skipped: true };
+  }
+  const stored = recordAnalytics(ctx.db, {
+    path: ctx.body?.path,
+    referrer: ctx.body?.referrer,
+    event: ctx.body?.event,
+  });
+  return { ok: true, ...stored };
+}
+
+/** Advertiser-safe audience totals. Aggregate counters only — no identities. */
+export async function publicAudience(ctx) {
+  const requested = Number(ctx.query.get('days'));
+  const days = Number.isFinite(requested) && requested > 0 ? Math.min(Math.round(requested), 365) : 30;
+  return analyticsSummary(ctx.db, { days, publicView: true });
 }
 
 export async function notifications(ctx) {

@@ -6,7 +6,7 @@ import {
   vehicleClass, defaultSchedule, toLocalInput,
 } from '../ui/format.js';
 import { pageHead, sectionHead, emptyState, errorBlock } from '../ui/layout.js';
-import { rideTimeline, driverCard, openRating, routeLine } from '../ui/booking.js';
+import { rideTimeline, driverCard, openRating, openCancel, routeLine } from '../ui/booking.js';
 import { RideMap, locateUser, fetchStreetRoute, generateStreetGridPoints } from '../ui/map.js';
 import { openModal, confirmModal, promptModal } from '../ui/modal.js';
 import { mountChat } from '../ui/chat.js';
@@ -857,6 +857,7 @@ async function renderRideDetail(view, ctx) {
   const renderLive = (b) => {
     const status = b.status;
     const driver = b.driver;
+    const dispatchRound = Number(b.dispatch?.round ?? 0);
     const pillHost = $('#ride-status-pill', view);
     if (pillHost) pillHost.outerHTML = statusBadge(status).replace('class="badge', 'id="ride-status-pill" class="badge');
 
@@ -885,6 +886,9 @@ async function renderRideDetail(view, ctx) {
       if (status === 'in_progress') {
         actionButtons.push(`<button class="btn btn-primary" data-act="complete">${icon('check', 16)} Complete trip</button>`);
       }
+      if (status === 'completed' && !b.rated_by?.driver) {
+        actionButtons.push(`<button class="btn btn-primary" data-act="rate">${icon('star', 16)} Rate rider</button>`);
+      }
     }
     if (role === 'customer' || isAdmin) {
       if (['accepted', 'arriving'].includes(status)) {
@@ -899,7 +903,7 @@ async function renderRideDetail(view, ctx) {
       if (status === 'in_progress') {
         actionButtons.push(`<button class="btn btn-xs btn-ghost sim-btn" data-sim="completed">${icon('check', 14)} Simulate: Complete trip</button>`);
       }
-      if (status === 'completed' && !b.rating) {
+      if (status === 'completed' && !(b.rated_by?.rider ?? Boolean(b.rating))) {
         actionButtons.push(`<button class="btn btn-primary" data-act="rate">${icon('star', 16)} Rate your trip</button>`);
       }
       if (['completed', 'cancelled'].includes(status)) {
@@ -929,16 +933,19 @@ async function renderRideDetail(view, ctx) {
         <div class="matching-row">
           <span class="pulse-ring" aria-hidden="true"></span>
           <div>
-            <strong>Broadcasting to online drivers nearby…</strong>
-            <p>${b.scheduled_for ? `We will match a driver before ${esc(time(b.scheduled_for))}.` : 'Searching for approved drivers. Keep this page open or match immediately below.'}</p>
+            <strong>Broadcasting to online drivers ${dispatchRound === 0 ? 'nearby' : dispatchRound === 1 ? 'in a wider area' : 'across the city'}…</strong>
+            <p>${b.scheduled_for ? `We will match a driver before ${esc(time(b.scheduled_for))}.` : `Search round ${Math.min(dispatchRound + 1, 3)} of 3. We keep widening the search until a driver accepts.`}</p>
           </div>
         </div>
-        <div class="demo-match-wrap">
-          <button type="button" class="btn btn-primary btn-sm" data-act="auto-match">
-            ${icon('zap', 15)} Match nearby driver now (instant)
-          </button>
-          <span class="demo-match-hint">${icon('info', 13)} Fast test: Pair with an approved driver immediately.</span>
-        </div>
+        ${(role === 'customer' || isAdmin) ? `
+          <div class="demo-match-wrap">
+            <button type="button" class="btn btn-primary btn-sm" data-act="auto-match">
+              ${icon('zap', 15)} Match nearby driver now (instant)
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" data-act="redispatch">${icon('refresh', 15)} Search a wider area</button>
+            <span class="demo-match-hint">${icon('info', 13)} Fast test: Pair with an approved driver immediately.</span>
+          </div>
+        ` : ''}
       ` : ''}
 
       ${driver && status !== 'requested' ? `
@@ -964,6 +971,23 @@ async function renderRideDetail(view, ctx) {
       ` : ''}
 
       ${b.rating ? `<div class="rating-receipt">${icon('star', 15)} You rated this trip ${b.rating}/5 ${b.review ? `<em>“${esc(b.review)}”</em>` : ''}</div>` : ''}
+
+      ${status === 'cancelled' ? `
+        <div class="cancel-receipt">
+          ${icon('ban', 15)}
+          <div>
+            <strong>${esc(b.cancellation?.label || 'Ride cancelled')}</strong>
+            <small>${b.cancellation?.by_role === 'system'
+              ? 'No driver was available. You were not charged.'
+              : b.cancellation?.by_role === 'driver'
+                ? 'Cancelled by the driver.'
+                : b.cancellation?.by_role === 'rider'
+                  ? 'Cancelled by the rider.'
+                  : 'Cancelled by support.'}${b.cancellation?.fee_applied ? ' A cancellation fee may apply.' : ''}</small>
+            ${b.cancellation?.note ? `<em>“${esc(b.cancellation.note)}”</em>` : ''}
+          </div>
+        </div>
+      ` : ''}
 
       <div class="live-actions">${actionButtons.join('')}</div>
 
@@ -1146,12 +1170,28 @@ async function renderRideDetail(view, ctx) {
       });
       return;
     }
+    if (act === 'redispatch') {
+      await withBusy(btn, async () => {
+        try {
+          const updated = await api(`/bookings/${booking.id}/redispatch`, { method: 'POST' });
+          booking = updated;
+          renderAll(updated, true);
+          toast('Searching a wider area for drivers.');
+        } catch (error) {
+          toastError(error);
+        }
+      });
+      return;
+    }
     if (act === 'show-qr') {
       showQr(booking);
       return;
     }
     if (act === 'rate') {
-      openRating(booking, { onRated: (updated) => { booking = updated; renderAll(updated, true); } });
+      openRating(booking, {
+        role: role === 'driver' ? 'driver' : 'rider',
+        onRated: (updated) => { booking = updated; renderAll(updated, true); },
+      });
       return;
     }
     if (act === 'rebook') {
@@ -1161,25 +1201,9 @@ async function renderRideDetail(view, ctx) {
       return;
     }
     if (act === 'cancel') {
-      const ok = await confirmModal({
-        title: 'Cancel this ride?',
-        message: role === 'driver'
-          ? 'This rider will be notified and will need to request another driver.'
-          : 'Your driver will be notified. You can book again right away.',
-        confirmLabel: 'Yes, cancel',
-        cancelLabel: 'Keep ride',
-        danger: true,
-      });
-      if (!ok) return;
-      await withBusy(btn, async () => {
-        try {
-          const updated = await api(`/bookings/${booking.id}/cancel`, { method: 'POST', body: { reason: 'Cancelled in app' } });
-          booking = updated;
-          renderAll(updated, true);
-          toast('Ride cancelled.');
-        } catch (error) {
-          toastError(error);
-        }
+      openCancel(booking, {
+        role: role === 'driver' ? 'driver' : role === 'admin' ? 'admin' : 'rider',
+        onCancelled: (updated) => { booking = updated; renderAll(updated, true); },
       });
       return;
     }

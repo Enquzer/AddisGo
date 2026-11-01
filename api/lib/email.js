@@ -7,25 +7,69 @@ import { nowIso } from './util.js';
 const API_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const LOG_PATH = path.join(path.dirname(API_DIR), 'data', 'emails.log');
 
+export const GMAIL_HOST = 'smtp.gmail.com';
+const GMAIL_DOMAINS = ['gmail.com', 'googlemail.com'];
+
+/** Gmail addresses always talk to Google's SMTP server, never a custom host. */
+export function isGmailAddress(email) {
+  const value = String(email ?? '').trim().toLowerCase();
+  const domain = value.split('@').pop();
+  return value.includes('@') && GMAIL_DOMAINS.includes(domain);
+}
+
+/**
+ * Google shows app passwords as four groups of four letters ("abcd efgh ijkl mnop").
+ * Users often paste the spaces, so strip whitespace and separators before use.
+ */
+export function normalizeAppPassword(value) {
+  return String(value ?? '').replace(/[\s\-_]+/g, '');
+}
+
+/** Google app passwords are exactly 16 letters/digits. */
+export function appPasswordLooksValid(value) {
+  return /^[a-zA-Z0-9]{16}$/.test(normalizeAppPassword(value));
+}
+
+function readMeta(db, key) {
+  try {
+    const row = db.get('SELECT value FROM meta WHERE key = ?', [key]);
+    return row ? row.value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeMeta(db, key, value) {
+  try {
+    if (value === undefined || value === null) {
+      db.run('DELETE FROM meta WHERE key = ?', [key]);
+    } else {
+      db.run('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [
+        key,
+        String(value),
+      ]);
+    }
+  } catch {
+    /* configuration diagnostics are best-effort */
+  }
+}
+
 /**
  * Retrieve current email configuration from SQLite meta table, falling back to process.env.
  */
 export function getEmailConfig(db) {
-  const getMeta = (key) => {
-    try {
-      const row = db.get('SELECT value FROM meta WHERE key = ?', [key]);
-      return row ? row.value : null;
-    } catch {
-      return null;
-    }
-  };
+  const user = readMeta(db, 'smtp_user') || process.env.SMTP_USER || '';
+  const pass = normalizeAppPassword(readMeta(db, 'smtp_pass') || process.env.SMTP_PASS || '');
+  const gmail = isGmailAddress(user);
 
-  const user = getMeta('smtp_user') || process.env.SMTP_USER || '';
-  const pass = getMeta('smtp_pass') || process.env.SMTP_PASS || '';
-  const host = getMeta('smtp_host') || process.env.SMTP_HOST || 'smtp.gmail.com';
-  const port = Number(getMeta('smtp_port') || process.env.SMTP_PORT || 465);
-  const from = getMeta('smtp_from') || process.env.SMTP_FROM || (user ? `AddisGo <${user}>` : 'AddisGo <support@addisgo.et>');
-  const isConfigured = Boolean(user && pass);
+  let host = readMeta(db, 'smtp_host') || process.env.SMTP_HOST || GMAIL_HOST;
+  let port = Number(readMeta(db, 'smtp_port') || process.env.SMTP_PORT || 465) || 465;
+  if (gmail) {
+    host = GMAIL_HOST;
+    port = port === 587 ? 587 : 465;
+  }
+
+  const from = readMeta(db, 'smtp_from') || process.env.SMTP_FROM || (user ? `AddisGo <${user}>` : 'AddisGo <support@addisgo.et>');
 
   return {
     host,
@@ -33,30 +77,207 @@ export function getEmailConfig(db) {
     user,
     pass,
     from,
-    is_configured: isConfigured,
+    gmail,
+    is_configured: Boolean(user && pass),
+    password_set: Boolean(pass),
+    password_format_ok: gmail ? appPasswordLooksValid(pass) : Boolean(pass),
     masked_pass: pass ? '••••••••' + pass.slice(-4) : '',
+    verified_at: readMeta(db, 'smtp_verified_at') || null,
+    last_test_at: readMeta(db, 'smtp_last_test_at') || null,
+    last_error: readMeta(db, 'smtp_last_error') || null,
   };
+}
+
+/** Merge stored config with candidate values without persisting anything. */
+function resolveConnection(base, overrides = {}) {
+  const user = String(overrides.user ?? base.user ?? '').trim();
+  const pass = normalizeAppPassword(overrides.pass ?? base.pass ?? '');
+  const gmail = isGmailAddress(user);
+
+  let host = String(overrides.host ?? base.host ?? GMAIL_HOST).trim() || GMAIL_HOST;
+  let port = Number(overrides.port ?? base.port ?? 465) || 465;
+  if (gmail) {
+    host = GMAIL_HOST;
+    port = port === 587 ? 587 : 465;
+  }
+
+  return {
+    user,
+    pass,
+    host,
+    port,
+    gmail,
+    from: String(overrides.from ?? base.from ?? '').trim() || (user ? `AddisGo <${user}>` : 'AddisGo <support@addisgo.et>'),
+  };
+}
+
+/** Nodemailer transport with Gmail-safe TLS, timeouts and app-password handling. */
+export function buildTransport(conn) {
+  return nodemailer.createTransport({
+    host: conn.host,
+    port: conn.port,
+    secure: conn.port === 465,
+    requireTLS: conn.port === 587,
+    auth: conn.user ? { user: conn.user, pass: conn.pass } : undefined,
+    tls: { rejectUnauthorized: process.env.SMTP_TLS_INSECURE !== '1' },
+    connectionTimeout: 12000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
+  });
+}
+
+/** Turn SMTP failures into something an admin can act on. */
+export function describeSmtpError(error, conn = {}) {
+  const detail = String(error?.message || error || '').trim().slice(0, 400);
+  const code = String(error?.code || '');
+  const server = conn.gmail || isGmailAddress(conn.user) ? 'Gmail' : (conn.host || 'the mail server');
+
+  if (code === 'EAUTH' || /535|534-5\.7\.9|Username and Password not accepted|Invalid login|authentication failed/i.test(detail)) {
+    return {
+      code: 'auth_failed',
+      message: conn.gmail || isGmailAddress(conn.user)
+        ? 'Google rejected the sign-in. Use a 16-character App Password (not your normal Gmail password), and make sure 2-Step Verification is turned on.'
+        : `${server} rejected the sign-in. Check the username and password.`,
+      detail,
+    };
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return {
+      code: 'dns_failed',
+      message: `Could not reach ${server}. Check this server's internet connection and DNS.`,
+      detail,
+    };
+  }
+  if (/ETIMEDOUT|ESOCKET|ECONNECTION|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH/i.test(code) || /timeout|connect/i.test(detail)) {
+    return {
+      code: 'network_failed',
+      message: `Could not open a secure connection to ${server}. The SMTP port may be blocked by your network or firewall.`,
+      detail,
+    };
+  }
+  if (code === 'EENVELOPE' || /550 5\.1\.1|recipient address rejected/i.test(detail)) {
+    return {
+      code: 'recipient_rejected',
+      message: `${server} rejected the recipient address. Check the email address and try again.`,
+      detail,
+    };
+  }
+  if (/self.signed|certificate|CERT_|TLS/i.test(code) || /certificate/i.test(detail)) {
+    return {
+      code: 'tls_failed',
+      message: `The secure TLS connection to ${server} failed. Check the server clock and any network proxy settings.`,
+      detail,
+    };
+  }
+  return {
+    code: 'smtp_failed',
+    message: `${server} could not complete the connection. Check the address and app password, then try again.`,
+    detail,
+  };
+}
+
+function publicConnection(conn) {
+  return { host: conn.host, port: conn.port, user: conn.user, gmail: conn.gmail };
+}
+
+/**
+ * Verify Gmail credentials without sending mail. Safe to call with candidate
+ * values from the setup form: candidate credentials are never persisted here.
+ */
+export async function verifyEmailConfig(db, overrides = {}) {
+  const conn = resolveConnection(getEmailConfig(db), overrides);
+  const started = Date.now();
+
+  if (!conn.user) {
+    return { ok: false, code: 'missing_user', message: 'Enter the Gmail address you want AddisGo to send from.', ...publicConnection(conn) };
+  }
+  if (!conn.pass) {
+    return { ok: false, code: 'missing_password', message: 'Enter the 16-character Google App Password.', ...publicConnection(conn) };
+  }
+  if (conn.gmail && !appPasswordLooksValid(conn.pass)) {
+    return {
+      ok: false,
+      code: 'bad_app_password',
+      message: 'A Google App Password is exactly 16 letters/digits. Remove any extra characters, or create a new app password at myaccount.google.com/apppasswords.',
+      ...publicConnection(conn),
+    };
+  }
+
+  try {
+    const transporter = buildTransport(conn);
+    await transporter.verify();
+    const timestamp = nowIso();
+    writeMeta(db, 'smtp_verified_at', timestamp);
+    writeMeta(db, 'smtp_last_error', null);
+    return {
+      ok: true,
+      code: 'ok',
+      message: conn.gmail
+        ? 'Google accepted the sign-in. Real email delivery is ready.'
+        : 'The mail server accepted the sign-in.',
+      verified_at: timestamp,
+      duration_ms: Date.now() - started,
+      ...publicConnection(conn),
+    };
+  } catch (error) {
+    const info = describeSmtpError(error, conn);
+    writeMeta(db, 'smtp_verified_at', null);
+    writeMeta(db, 'smtp_last_error', info.message);
+    return {
+      ok: false,
+      ...info,
+      duration_ms: Date.now() - started,
+      ...publicConnection(conn),
+    };
+  }
 }
 
 /**
  * Persist email configuration into database meta table.
  */
 export function saveEmailConfig(db, { user, pass, from, host, port }) {
-  const setMeta = (key, val) => {
-    if (val !== undefined && val !== null) {
-      db.run('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [
-        key,
-        String(val).trim(),
-      ]);
-    }
-  };
+  const current = getEmailConfig(db);
+  const nextUser = user !== undefined ? String(user).trim() : current.user;
+  const nextPass = pass !== undefined && String(pass).trim() !== ''
+    ? normalizeAppPassword(pass)
+    : current.pass;
+  const gmail = isGmailAddress(nextUser);
 
-  if (user !== undefined) setMeta('smtp_user', user);
-  if (pass !== undefined && pass !== '') setMeta('smtp_pass', pass);
-  if (from !== undefined) setMeta('smtp_from', from);
-  if (host !== undefined) setMeta('smtp_host', host || 'smtp.gmail.com');
-  if (port !== undefined) setMeta('smtp_port', String(port || 465));
+  let nextHost = host !== undefined ? String(host).trim() : current.host;
+  let nextPort = port !== undefined ? Number(port) : current.port;
+  if (gmail) {
+    nextHost = GMAIL_HOST;
+    nextPort = nextPort === 587 ? 587 : 465;
+  }
+  if (!nextHost) nextHost = GMAIL_HOST;
+  if (!nextPort) nextPort = 465;
 
+  let nextFrom = from !== undefined ? String(from).trim() : current.from;
+  const builtInSupport = /^AddisGo <support@addisgo\.et>$/i.test(nextFrom);
+  if (gmail && (!nextFrom || builtInSupport)) nextFrom = `AddisGo <${nextUser}>`;
+  if (!nextFrom) nextFrom = nextUser ? `AddisGo <${nextUser}>` : 'AddisGo <support@addisgo.et>';
+
+  writeMeta(db, 'smtp_user', nextUser);
+  if (nextPass) writeMeta(db, 'smtp_pass', nextPass);
+  writeMeta(db, 'smtp_from', nextFrom);
+  writeMeta(db, 'smtp_host', nextHost);
+  writeMeta(db, 'smtp_port', nextPort);
+
+  // Changing the account or password invalidates the previous verification.
+  if (current.user !== nextUser || current.pass !== nextPass) {
+    writeMeta(db, 'smtp_verified_at', null);
+    writeMeta(db, 'smtp_last_error', null);
+    writeMeta(db, 'smtp_last_test_at', null);
+  }
+
+  return getEmailConfig(db);
+}
+
+/** Remove stored Gmail credentials and verification state. */
+export function clearEmailConfig(db) {
+  for (const key of ['smtp_user', 'smtp_pass', 'smtp_from', 'smtp_verified_at', 'smtp_last_test_at', 'smtp_last_error']) {
+    writeMeta(db, key, null);
+  }
   return getEmailConfig(db);
 }
 
@@ -68,19 +289,9 @@ export async function sendMail(db, { to, subject, html, text, template = 'generi
   const timestamp = nowIso();
 
   if (config.is_configured) {
+    const conn = resolveConnection(config);
     try {
-      const transporter = nodemailer.createTransport({
-        host: config.host,
-        port: config.port,
-        secure: config.port === 465,
-        auth: {
-          user: config.user,
-          pass: config.pass.replace(/\s+/g, ''), // Clean spaces from Google app password
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
+      const transporter = buildTransport(conn);
 
       await transporter.sendMail({
         from: config.from,
@@ -99,19 +310,24 @@ export async function sendMail(db, { to, subject, html, text, template = 'generi
         /* outbox record non-fatal */
       }
 
-      console.log(`[Email] Dispatched via ${config.host} to <${to}>: "${subject}"`);
-      return { ok: true, method: 'smtp', recipient: to };
+      writeMeta(db, 'smtp_last_error', null);
+      writeMeta(db, 'smtp_verified_at', timestamp);
+
+      console.log(`[Email] Dispatched via ${conn.host} to <${to}>: "${subject}"`);
+      return { ok: true, method: 'smtp', delivered: true, recipient: to };
     } catch (err) {
-      console.error(`[Email Error] Failed to send via SMTP to <${to}>:`, err.message);
+      const info = describeSmtpError(err, conn);
+      console.error(`[Email Error] Failed to send via SMTP to <${to}>:`, info.detail || info.message);
+      writeMeta(db, 'smtp_last_error', info.message);
       try {
         db.run(
           'INSERT INTO email_outbox (recipient, subject, template, status, error, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-          [to, subject, template, 'failed', err.message, timestamp],
+          [to, subject, template, 'failed', info.message, timestamp],
         );
       } catch {
         /* ignore */
       }
-      return { ok: false, error: err.message, method: 'smtp' };
+      return { ok: false, error: info.message, code: info.code, detail: info.detail, method: 'smtp' };
     }
   } else {
     // Development / Offline fallback logger
@@ -128,7 +344,7 @@ export async function sendMail(db, { to, subject, html, text, template = 'generi
     }
 
     console.log(`[Email Logger] (${template}) to <${to}>: "${subject}" (Stored in data/emails.log)`);
-    return { ok: true, method: 'logged_offline', recipient: to };
+    return { ok: true, method: 'logged_offline', delivered: false, recipient: to };
   }
 }
 
@@ -361,10 +577,20 @@ export async function sendTestEmail(db, to) {
     <p>Real registration welcomes, ride receipts, and tour notifications will now be delivered reliably via this Google account.</p>
   `;
 
-  return sendMail(db, {
+  const result = await sendMail(db, {
     to,
     subject: `AddisGo Google Mail Test [Success] ✅`,
     html: emailLayout({ title, previewText, contentHtml }),
     template: 'admin_test',
   });
+
+  if (result.ok && result.method === 'smtp') {
+    const timestamp = nowIso();
+    writeMeta(db, 'smtp_last_test_at', timestamp);
+    writeMeta(db, 'smtp_verified_at', timestamp);
+    writeMeta(db, 'smtp_last_error', null);
+    result.tested_at = timestamp;
+  }
+
+  return result;
 }

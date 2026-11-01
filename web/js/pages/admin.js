@@ -11,9 +11,14 @@ import {
 import { openModal, confirmModal } from '../ui/modal.js';
 import { toast, toastError } from '../ui/toast.js';
 import { $, withBusy } from '../ui/dom.js';
+import { RideMap } from '../ui/map.js';
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: 'grid' },
+  { key: 'insights', label: 'Insights', icon: 'trending-up' },
+  { key: 'map', label: 'Area map', icon: 'map-pin' },
+  { key: 'revenue', label: 'Revenue', icon: 'wallet' },
+  { key: 'analytics', label: 'Audience', icon: 'globe' },
   { key: 'drivers', label: 'Drivers', icon: 'car' },
   { key: 'users', label: 'People', icon: 'users' },
   { key: 'bookings', label: 'Rides', icon: 'ticket' },
@@ -395,6 +400,10 @@ export default async function renderAdmin(view, ctx) {
 
   const data = {
     overview: null,
+    insights: null,
+    map: null,
+    revenue: null,
+    analytics: null,
     drivers: [],
     users: [],
     bookings: [],
@@ -545,6 +554,244 @@ export default async function renderAdmin(view, ctx) {
           </tr>`).join(''),
           { icon: 'ticket', title: 'No rides yet', text: 'Bookings will appear here as soon as riders request them.' },
         )}
+      </section>
+    `;
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* Insights                                                          */
+  /* ---------------------------------------------------------------- */
+
+  const ASPECT_LABELS = {
+    car_condition: 'Car condition',
+    comfort: 'Comfort',
+    cleanliness: 'Tidiness',
+    service: 'Service',
+    safety: 'Safety',
+    punctuality: 'Punctuality',
+  };
+
+  const paintInsights = () => {
+    const host = bodyFor('insights');
+    if (!host || !data.insights) return;
+    const ins = data.insights;
+    const ratings = ins.ratings;
+    const blame = ins.cancellations.by_blame;
+    const maxStars = Math.max(1, ...ratings.distribution.map((row) => row.count));
+    const hourLabel = (hour) => `${String(hour).padStart(2, '0')}:00`;
+    const share = (count) => (ratings.total ? Math.round((count / ratings.total) * 100) : 0);
+
+    host.innerHTML = `
+      ${toolbar({
+        title: `The last ${ins.window_days} days`,
+        description: 'Demand, cancellations and reputation. These are aggregate counts — no rider identities or precise locations leave this screen.',
+      })}
+
+      <div class="stat-strip" style="margin-bottom:16px">
+        ${statCard({ label: 'Requests', value: String(ins.requests.total), hint: `${ins.requests.completed} completed`, icon: 'ticket', tone: 'blue' })}
+        ${statCard({ label: 'Cancellation rate', value: `${ins.requests.cancellation_rate}%`, hint: `${ins.cancellations.total} coded cancellations`, icon: 'ban', tone: ins.requests.cancellation_rate > 20 ? 'red' : 'green' })}
+        ${statCard({ label: 'No driver found', value: String(ins.requests.no_driver_found), hint: `${ins.cancellations.redispatched} re-dispatches`, icon: 'navigation', tone: ins.requests.no_driver_found ? 'amber' : 'green' })}
+        ${statCard({ label: 'Avg rating', value: ratings.average == null ? '—' : `${Number(ratings.average).toFixed(1)} ★`, hint: `${ratings.total} rider ratings`, icon: 'star', tone: 'amber' })}
+        ${statCard({ label: 'Arrival delay', value: ins.punctuality.average_delay_min == null ? '—' : `${ins.punctuality.average_delay_min > 0 ? '+' : ''}${ins.punctuality.average_delay_min} min`, hint: `${ins.punctuality.sample} measured arrivals`, icon: 'clock', tone: 'violet' })}
+        ${statCard({ label: 'Peak hour', value: ins.demand.peak_hour == null ? '—' : hourLabel(ins.demand.peak_hour), hint: 'Highest request volume', icon: 'trending-up', tone: 'blue' })}
+      </div>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Why trips are cancelled', {
+          description: `${ins.cancellations.total} coded events · rider ${blame.rider || 0} · driver ${blame.driver || 0} · platform ${blame.platform || 0} · none ${blame.none || 0}`,
+        })}
+        ${tableBlock(
+          '<th>Reason</th><th>Reported by</th><th>Blame</th><th class="num">Count</th><th class="num">Share</th>',
+          ins.cancellations.by_reason.map((row) => `<tr>
+            <td><strong>${esc(titleCase(row.code))}</strong></td>
+            <td>${pill(titleCase(row.role), row.role === 'driver' ? 'amber' : row.role === 'system' ? 'muted' : 'blue')}</td>
+            <td>${pill(titleCase(row.blame), row.blame === 'driver' || row.blame === 'rider' ? 'red' : row.blame === 'platform' ? 'amber' : 'muted')}</td>
+            <td class="num">${row.count}</td>
+            <td class="num">${row.share}%</td>
+          </tr>`).join(''),
+          { icon: 'ban', title: 'No cancellations', text: 'No coded cancellations in this window.' },
+        )}
+      </section>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Ratings and service quality', {
+          description: `${ratings.total} rider ratings · ${ratings.riders_rated} riders rated by drivers · rider average ${ratings.rider_average == null ? '—' : `${ratings.rider_average} ★`}`,
+        })}
+        <div class="insight-split">
+          <div>
+            <h3 class="insight-subhead">Star distribution</h3>
+            <div class="insight-bars">
+              ${ratings.distribution.map((row) => `
+                <div class="insight-bar-row">
+                  <span class="insight-bar-label">${row.stars} ★</span>
+                  <div class="mini-bar"><i style="width:${row.count ? Math.max(4, Math.round((row.count / maxStars) * 100)) : 0}%"></i></div>
+                  <span class="insight-bar-value">${row.count} <small>${share(row.count)}%</small></span>
+                </div>
+              `).join('')}
+            </div>
+            <h3 class="insight-subhead">Most common tags</h3>
+            <div class="tag-chips">
+              ${ratings.tags.length
+                ? ratings.tags.map((tag) => `<span class="tag-chip is-on">${esc(titleCase(tag.code))} · ${tag.count}</span>`).join('')
+                : '<span class="text-muted">No tags yet.</span>'}
+            </div>
+          </div>
+          <div>
+            <h3 class="insight-subhead">Aspect averages</h3>
+            <div class="insight-bars">
+              ${ratings.aspects.map((aspect) => `
+                <div class="insight-bar-row">
+                  <span class="insight-bar-label">${esc(ASPECT_LABELS[aspect.key] || titleCase(aspect.key))}</span>
+                  <div class="mini-bar"><i style="width:${aspect.avg == null ? 0 : Math.round((aspect.avg / 5) * 100)}%"></i></div>
+                  <span class="insight-bar-value">${aspect.avg == null ? '—' : `${aspect.avg.toFixed(1)}`}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Where the demand is', {
+          description: `Requests grouped into ~1.2 km geohash cells · peak hour ${ins.demand.peak_hour == null ? '—' : hourLabel(ins.demand.peak_hour)} · ${ins.demand.online_supply} drivers online now.`,
+        })}
+        <div class="demand-heatmap" aria-label="Request density by area">
+          ${ins.demand.heatmap.length
+            ? ins.demand.heatmap.map((cell) => {
+              const max = Math.max(1, ...ins.demand.heatmap.map((row) => row.requests));
+              const intensity = Math.max(0.15, cell.requests / max);
+              return `<div class="demand-cell" style="--heat:${intensity.toFixed(2)}">
+                <strong>${cell.requests}</strong>
+                <small>${cell.online_drivers} online</small>
+                ${cell.surge > 1 ? `<span class="demand-surge">×${cell.surge}</span>` : ''}
+              </div>`;
+            }).join('')
+            : '<p class="text-muted">No pickups in this window yet.</p>'}
+        </div>
+        ${tableBlock(
+          '<th>Pickup cell</th><th>Sample pickup</th><th class="num">Requests</th><th class="num">Online now</th><th class="num">Pressure</th><th class="num">Surge hint</th>',
+          ins.demand.areas.map((area) => `<tr>
+            <td class="nowrap"><strong>${area.lat.toFixed(2)}, ${area.lng.toFixed(2)}</strong></td>
+            <td>${esc(area.sample || '—')}</td>
+            <td class="num">${area.requests}</td>
+            <td class="num">${area.online_drivers ?? 0}</td>
+            <td class="num">${area.pressure ?? '—'}</td>
+            <td class="num">${area.surge > 1 ? pill(`×${area.surge}`, 'amber') : pill('×1', 'muted')}</td>
+          </tr>`).join(''),
+          { icon: 'map', title: 'No demand data', text: 'Pickup areas appear once rides are requested.' },
+        )}
+        ${ins.demand.surge_suggestions.length
+          ? `<p class="fine-print">${icon('info', 13)} Surge is an operations suggestion only — AddisGo never changes a price automatically. ${ins.demand.surge_suggestions.length} cells are under pressure right now.</p>`
+          : ''}
+      </section>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Driver air-time', {
+          description: `${ins.fleet.online_now} online now · ${ins.fleet.sessions} sessions · ${ins.fleet.app_closed_share}% ended because the app was closed.`,
+        })}
+        <div class="stat-strip" style="margin-bottom:16px">
+          ${statCard({ label: 'Online hours', value: minutes(ins.fleet.online_minutes), hint: `${plural(ins.fleet.sessions, 'session')} in window`, icon: 'clock', tone: 'blue' })}
+          ${statCard({ label: 'Idle time', value: minutes(ins.fleet.idle_minutes), hint: 'Online but no trip', icon: 'navigation', tone: 'violet' })}
+          ${statCard({ label: 'Avg session', value: minutes(ins.fleet.avg_session_minutes), hint: `${minutes(ins.fleet.avg_idle_minutes)} idle per session`, icon: 'trending-up', tone: 'amber' })}
+          ${statCard({ label: 'Acceptance', value: ins.fleet.acceptance_rate == null ? '—' : `${ins.fleet.acceptance_rate}%`, hint: `${ins.fleet.accepted_offers} accepted · ${ins.fleet.declined_offers} declined`, icon: 'check-circle', tone: 'green' })}
+          ${statCard({ label: 'App closed', value: String(ins.fleet.app_closed_sessions), hint: 'Sessions ended by silence', icon: 'smartphone', tone: ins.fleet.app_closed_sessions ? 'red' : 'green' })}
+          ${statCard({ label: 'Offers sent', value: String(ins.fleet.offers), hint: 'Dispatch attempts in window', icon: 'send', tone: 'blue' })}
+        </div>
+        ${tableBlock(
+          '<th>Driver</th><th class="num">Online</th><th class="num">Idle</th><th class="num">Sessions</th><th class="num">Acceptance</th><th>Last beat</th>',
+          ins.fleet.drivers.map((driver) => `<tr>
+            <td><strong>${esc(driver.name)}</strong>${driver.is_online ? ' ' + pill('Online', 'green') : ''}</td>
+            <td class="num">${minutes(driver.online_minutes)}</td>
+            <td class="num">${minutes(driver.idle_minutes)}</td>
+            <td class="num">${driver.sessions}</td>
+            <td class="num">${driver.acceptance_rate == null ? '—' : `${driver.acceptance_rate}%`}</td>
+            <td class="nowrap">${driver.last_heartbeat ? esc(relative(driver.last_heartbeat)) : '—'}</td>
+          </tr>`).join(''),
+          { icon: 'clock', title: 'No sessions yet', text: 'Air-time appears once drivers go online.' },
+        )}
+      </section>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Who rides with us', {
+          description: `${ins.demographics.new_users} new accounts in this window · ${ins.demographics.avg_rides_per_rider} completed rides per active rider.`,
+        })}
+        <div class="insight-split">
+          <div>
+            <h3 class="insight-subhead">Accounts by role</h3>
+            <div class="insight-bars">
+              ${Object.entries(ins.demographics.roles).map(([role, count]) => `
+                <div class="insight-bar-row">
+                  <span class="insight-bar-label">${esc(roleLabel(role))}</span>
+                  <div class="mini-bar"><i style="width:${Math.max(2, Math.round((count / Math.max(1, ins.demographics.roles.customer + ins.demographics.roles.driver + ins.demographics.roles.admin)) * 100))}%"></i></div>
+                  <span class="insight-bar-value">${count}</span>
+                </div>
+              `).join('')}
+            </div>
+            <h3 class="insight-subhead">Request frequency</h3>
+            <div class="insight-bars">
+              ${ins.demographics.frequency.map((row) => `
+                <div class="insight-bar-row">
+                  <span class="insight-bar-label">${esc(row.bucket === 'once' ? 'One ride' : `${row.bucket} rides`)}</span>
+                  <div class="mini-bar"><i style="width:${Math.max(2, Math.round((row.riders / Math.max(1, ins.demographics.riders_with_trips)) * 100))}%"></i></div>
+                  <span class="insight-bar-value">${row.riders} <small>riders</small></span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          <div>
+            <h3 class="insight-subhead">Rider languages</h3>
+            <div class="insight-bars">
+              ${ins.demographics.languages.length
+                ? ins.demographics.languages.map((row) => `
+                  <div class="insight-bar-row">
+                    <span class="insight-bar-label">${esc(row.name)}</span>
+                    <div class="mini-bar"><i style="width:${Math.max(2, Math.round((row.count / Math.max(1, ins.demographics.languages[0].count)) * 100))}%"></i></div>
+                    <span class="insight-bar-value">${row.count}</span>
+                  </div>
+                `).join('')
+                : '<p class="text-muted">No rider profiles yet.</p>'}
+            </div>
+            <h3 class="insight-subhead">Verification</h3>
+            <div class="insight-bars">
+              <div class="insight-bar-row">
+                <span class="insight-bar-label">Verified riders</span>
+                <div class="mini-bar"><i style="width:${Math.max(2, Math.round((ins.demographics.verified_riders / Math.max(1, ins.demographics.roles.customer)) * 100))}%"></i></div>
+                <span class="insight-bar-value">${ins.demographics.verified_riders} <small>of ${ins.demographics.roles.customer}</small></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Fleet and riders', { description: 'Highest rated drivers and the most frequent riders in this window.' })}
+        <div class="insight-split">
+          <div>
+            <h3 class="insight-subhead">Top drivers</h3>
+            ${tableBlock(
+              '<th>Driver</th><th>Class</th><th class="num">Rating</th><th class="num">Trips</th>',
+              ins.top_drivers.map((driver) => `<tr>
+                <td><strong>${esc(driver.name)}</strong>${driver.is_online ? ' ' + pill('Online', 'green') : ''}</td>
+                <td>${esc(vehicleClass(driver.vehicle_class).name)}</td>
+                <td class="num">${driver.rating.toFixed(1)} ★ <small>(${driver.rating_count})</small></td>
+                <td class="num">${driver.trips}</td>
+              </tr>`).join(''),
+              { icon: 'car', title: 'No drivers', text: 'Approved drivers appear here.' },
+            )}
+          </div>
+          <div>
+            <h3 class="insight-subhead">Most active riders</h3>
+            ${tableBlock(
+              '<th>Rider</th><th class="num">Completed</th><th class="num">Reputation</th>',
+              ins.top_riders.map((rider) => `<tr>
+                <td><strong>${esc(rider.name)}</strong></td>
+                <td class="num">${rider.trips}</td>
+                <td class="num">${rider.rating.toFixed(1)} ★ <small>(${rider.rating_count})</small></td>
+              </tr>`).join(''),
+              { icon: 'users', title: 'No riders', text: 'Riders appear once they book.' },
+            )}
+          </div>
+        </div>
       </section>
     `;
   };
@@ -1007,67 +1254,102 @@ export default async function renderAdmin(view, ctx) {
     }
 
     const { config, total_sent, subscriber_count, outbox } = data.email || {};
-    const isReady = config?.is_configured;
+    const cfg = config || {};
+    const isReady = Boolean(cfg.is_configured);
+    const isVerified = Boolean(cfg.verified_at);
+    const tone = isReady ? (isVerified ? 'success' : 'amber') : 'amber';
+    const statusLabel = isReady ? (isVerified ? 'Gmail connected' : 'Saved — verify now') : 'Offline logger';
+    const statusIcon = isReady ? (isVerified ? 'check-circle' : 'info') : 'alert';
+    const isGmail = cfg.gmail ?? /@(gmail|googlemail)\.com$/i.test(cfg.user || '');
+    const senderPlaceholder = cfg.user ? `AddisGo <${cfg.user}>` : 'AddisGo <yourname@gmail.com>';
 
     host.innerHTML = `
       ${toolbar({
         title: 'Email & Google',
-        description: `${isReady ? 'Google SMTP is connected' : 'Offline logger mode'} · ${total_sent || 0} messages sent · ${subscriber_count || 0} subscribers.`,
-        actions: `<span class="badge ${isReady ? 'badge-success' : 'badge-amber'}">${icon(isReady ? 'check' : 'alert', 13)} ${isReady ? 'Google SMTP active' : 'Offline logger'}</span>`,
+        description: `Send real welcome emails, ride receipts and tour notices through your Gmail account · ${total_sent || 0} messages · ${subscriber_count || 0} subscribers.`,
+        actions: `<span class="badge badge-${tone}">${icon(statusIcon, 13)} ${statusLabel}</span>`,
       })}
       <div class="email-admin-grid">
         <div class="panel email-status-card">
           <div class="email-status-head">
-            <span class="badge ${isReady ? 'badge-success' : 'badge-amber'}">${icon(isReady ? 'check' : 'info', 13)} ${isReady ? 'Real delivery is live' : 'Dev logger mode'}</span>
+            <span class="badge badge-${tone}">${icon(statusIcon, 13)} ${isReady ? (isVerified ? 'Real delivery is live' : 'Credentials saved, not verified') : 'Dev logger mode'}</span>
             <span class="email-stats-chip">${total_sent || 0} emails · ${subscriber_count || 0} subscribers</span>
           </div>
-          <h3>${isReady ? 'Google Mail delivery is live' : 'Connect your Google / Gmail account'}</h3>
+          <h3>${isReady ? (isVerified ? 'Google Mail delivery is live' : 'One step left: verify your Gmail connection') : 'Connect your Google / Gmail account'}</h3>
           <p class="muted">${isReady
-            ? `Connected as <strong>${esc(config.user)}</strong>. Welcome emails, ride receipts and tour notices are delivered automatically.`
-            : 'Outgoing email is written to <code>data/emails.log</code>. Add a Gmail app password below to deliver real email.'}</p>
+            ? `Connected as <strong>${esc(cfg.user)}</strong>. ${isVerified ? 'Welcome emails, ride receipts and tour notices are delivered automatically.' : 'Run a verification to confirm Google accepts the saved app password.'}`
+            : 'Outgoing email is written to <code>data/emails.log</code> until you connect a Gmail account. Follow the three steps below — it takes about two minutes.'}</p>
+
+          <div class="email-connection-grid">
+            <div><span>Account</span><strong>${esc(cfg.user || 'Not connected')}</strong></div>
+            <div><span>SMTP server</span><strong>${esc(cfg.host)}:${cfg.port}</strong></div>
+            <div><span>Last verified</span><strong>${cfg.verified_at ? esc(dateTime(cfg.verified_at)) : 'Never'}</strong></div>
+            <div><span>Last test email</span><strong>${cfg.last_test_at ? esc(dateTime(cfg.last_test_at)) : '—'}</strong></div>
+          </div>
+
+          ${cfg.last_error ? `
+            <div class="email-alert email-alert-error">
+              ${icon('alert', 16)}
+              <div><strong>Last connection problem</strong><p>${esc(cfg.last_error)}</p></div>
+            </div>` : ''}
+
+          ${isReady ? `
+            <div class="email-status-actions">
+              <button type="button" class="btn btn-outline btn-sm" id="email-verify-existing">${icon('shield', 14)} Verify connection</button>
+              <button type="button" class="btn btn-ghost btn-sm btn-danger-text" id="email-disconnect">${icon('trash', 14)} Disconnect Gmail</button>
+            </div>` : ''}
         </div>
 
         <div class="email-two-col">
           <div class="panel email-settings-card">
-            <h4>${icon('settings', 16)} Google Mail credentials</h4>
+            <h4>${icon('key', 16)} Connect your Google account</h4>
+            <p class="muted">Use a Google <strong>App Password</strong> — your normal Gmail password will not work for SMTP.</p>
             <form id="email-config-form" class="email-config-form">
               <div class="form-group">
-                <label for="smtp-user">Google / Gmail address</label>
-                <input type="email" id="smtp-user" name="user" value="${esc(config?.user || '')}" placeholder="e.g. yourname@gmail.com" required />
+                <label for="smtp-user">Gmail address</label>
+                <input type="email" id="smtp-user" name="user" value="${esc(cfg.user || '')}" placeholder="yourname@gmail.com" autocomplete="username" required />
               </div>
               <div class="form-group">
-                <label for="smtp-pass">Google app password (16 letters)</label>
-                <input type="password" id="smtp-pass" name="pass" placeholder="${esc(config?.masked_pass || 'abcd efgh ijkl mnop')}" />
-                <small class="muted">Your 16-letter app password from Google Security.</small>
+                <label for="smtp-pass">Google App Password</label>
+                <div class="app-password-field">
+                  <input type="password" id="smtp-pass" name="pass" placeholder="${cfg.password_set ? 'Saved — leave blank to keep it' : 'abcd efgh ijkl mnop'}" autocomplete="new-password" spellcheck="false" />
+                  <button type="button" class="btn btn-ghost btn-sm app-password-toggle" id="toggle-app-password" aria-label="Show app password">${icon('eye', 16)}</button>
+                </div>
+                <small class="muted">16 letters from Google. Spaces are fine. ${cfg.password_set ? 'The saved password is hidden.' : ''}</small>
               </div>
               <div class="form-group">
                 <label for="smtp-from">Sender name &amp; email</label>
-                <input type="text" id="smtp-from" name="from" value="${esc(config?.from || 'AddisGo <support@addisgo.et>')}" placeholder="AddisGo <support@addisgo.et>" />
+                <input type="text" id="smtp-from" name="from" value="${esc(isReady ? cfg.from : '')}" placeholder="${esc(senderPlaceholder)}" />
+                <small class="muted">Leave blank to send as “AddisGo &lt;your Gmail address&gt;”. Gmail may require an alias if you use another address.</small>
               </div>
-              <div class="form-actions">
-                <button type="submit" class="btn btn-primary" id="save-email-config-btn">${icon('check', 14)} Save &amp; connect Google</button>
+              <div id="email-verify-result" class="test-email-result"></div>
+              <div class="form-actions email-form-actions">
+                <button type="submit" class="btn btn-primary" data-email-action="verify">${icon('shield', 14)} Verify &amp; save</button>
+                <button type="submit" class="btn btn-outline" data-email-action="save">Save without testing</button>
               </div>
             </form>
           </div>
 
           <div class="panel email-test-card">
             <h4>${icon('send', 16)} Send a live test email</h4>
-            <p class="muted">Dispatch an immediate test to verify the Gmail connection.</p>
+            <p class="muted">Dispatch an immediate test to confirm Gmail delivery end to end.</p>
             <form id="email-test-form" class="email-test-form">
               <div class="form-group">
                 <label for="test-recipient">Recipient email</label>
-                <input type="email" id="test-recipient" placeholder="Enter recipient email…" required />
+                <input type="email" id="test-recipient" placeholder="you@example.com" value="${esc(cfg.user || '')}" required />
               </div>
               <button type="submit" class="btn btn-outline" id="send-test-btn">${icon('mail', 14)} Send test email</button>
               <div id="test-email-result" class="test-email-result"></div>
             </form>
+
             <div class="google-guide-box">
-              <strong>How to get a Google app password</strong>
-              <ol>
-                <li>Open <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a></li>
-                <li>Under 2-Step Verification choose <strong>App passwords</strong></li>
-                <li>Create one named <strong>AddisGo</strong> and copy the 16 letters here.</li>
+              <strong>${icon('key', 14)} How to get a Google App Password</strong>
+              <ol class="google-guide-steps">
+                <li><a href="https://myaccount.google.com/security" target="_blank" rel="noopener">Turn on 2-Step Verification</a> for your Google account.</li>
+                <li>Open <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Google App Passwords</a>.</li>
+                <li>Create one named <strong>AddisGo</strong>, then paste the 16 letters here.</li>
               </ol>
+              <p class="google-guide-note">${isGmail ? 'Gmail addresses use <code>smtp.gmail.com</code> on port 465 automatically.' : 'Google Workspace admins may need to allow app passwords first.'}</p>
             </div>
           </div>
         </div>
@@ -1081,7 +1363,7 @@ export default async function renderAdmin(view, ctx) {
               <td><strong>${esc(message.recipient)}</strong></td>
               <td>${esc(message.subject)}</td>
               <td><span class="badge badge-soft">${esc(message.template)}</span></td>
-              <td>${message.status === 'sent' ? pill('Sent', 'green') : message.status === 'logged_offline' ? pill('Logged offline', 'amber') : pill(titleCase(message.status), 'red')}</td>
+              <td>${message.status === 'sent' ? pill('Sent', 'green') : message.status === 'logged_offline' ? pill('Logged offline', 'amber') : pill(titleCase(message.status), 'red')}${message.error ? `<br><small class="text-muted">${esc(message.error)}</small>` : ''}</td>
               <td class="actions-col">${rowActions(actionBtn('Delete', 'trash', `data-outbox-delete="${message.id}"`, 'btn-ghost btn-danger-text'))}</td>
             </tr>`).join(''),
             { icon: 'mail', title: 'No emails dispatched yet', text: 'When users register, book rides or subscribe, messages appear here.' },
@@ -1104,25 +1386,96 @@ export default async function renderAdmin(view, ctx) {
       </div>
     `;
 
+    host.querySelector('#toggle-app-password')?.addEventListener('click', (event) => {
+      const input = host.querySelector('#smtp-pass');
+      const button = event.currentTarget;
+      if (!input) return;
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      button.setAttribute('aria-label', show ? 'Hide app password' : 'Show app password');
+      button.innerHTML = icon(show ? 'eye' : 'lock', 16);
+    });
+
+    const describeVerification = (verification) => `
+      <div class="email-alert ${verification.ok ? 'email-alert-success' : 'email-alert-error'}">
+        ${icon(verification.ok ? 'check-circle' : 'alert', 16)}
+        <div>
+          <strong>${verification.ok ? 'Google accepted the connection' : 'Google could not connect'}</strong>
+          <p>${esc(verification.message)}</p>
+          ${!verification.ok && verification.detail ? `<small>${esc(verification.detail)}</small>` : ''}
+        </div>
+      </div>`;
+
     host.querySelector('#email-config-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const button = host.querySelector('#save-email-config-btn');
+      const action = event.submitter?.dataset.emailAction || 'verify';
+      const button = event.submitter || host.querySelector('[data-email-action="verify"]');
+      const result = host.querySelector('#email-verify-result');
+      const payload = {
+        user: host.querySelector('#smtp-user').value.trim(),
+        pass: host.querySelector('#smtp-pass').value.trim(),
+        from: host.querySelector('#smtp-from').value.trim(),
+      };
+
       await withBusy(button, async () => {
         try {
-          await api('/admin/email/settings', {
-            method: 'POST',
-            body: {
-              user: host.querySelector('#smtp-user').value.trim(),
-              pass: host.querySelector('#smtp-pass').value.trim(),
-              from: host.querySelector('#smtp-from').value.trim(),
-            },
-          });
-          toast('Google email settings updated.');
+          if (action === 'verify') {
+            result.innerHTML = '<span class="text-muted">Saving and contacting Google…</span>';
+            const response = await api('/admin/email/settings', { method: 'POST', body: { ...payload, verify: true } });
+            const verification = response.verification || { ok: false, message: 'Verification did not run.' };
+            result.innerHTML = describeVerification(verification);
+            if (verification.ok) toast('Gmail connected and verified.');
+            else toastError(new Error(verification.message), 'Gmail verification failed.');
+          } else {
+            await api('/admin/email/settings', { method: 'POST', body: payload });
+            result.innerHTML = `
+              <div class="email-alert email-alert-success">
+                ${icon('check', 16)}
+                <div><strong>Settings saved</strong><p>Run “Verify connection” to confirm Google accepts the sign-in.</p></div>
+              </div>`;
+            toast('Gmail settings saved.');
+          }
           await reloadTab('email');
         } catch (error) {
+          result.innerHTML = `
+            <div class="email-alert email-alert-error">
+              ${icon('alert', 16)}
+              <div><strong>Could not save</strong><p>${esc(error.message)}</p></div>
+            </div>`;
           toastError(error, 'Failed to save email settings.');
         }
       });
+    });
+
+    host.querySelector('#email-verify-existing')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      await withBusy(button, async () => {
+        try {
+          const verification = await api('/admin/email/verify', { method: 'POST', body: {} });
+          if (verification.ok) toast('Gmail connection verified.');
+          else toastError(new Error(verification.message), 'Gmail verification failed.');
+          await reloadTab('email', { quiet: true });
+        } catch (error) {
+          toastError(error, 'Could not verify the Gmail connection.');
+        }
+      });
+    });
+
+    host.querySelector('#email-disconnect')?.addEventListener('click', async () => {
+      const ok = await confirmModal({
+        title: 'Disconnect Gmail?',
+        message: 'Stored Gmail credentials will be removed and outgoing email will return to the local dev log.',
+        confirmLabel: 'Disconnect',
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await api('/admin/email/disconnect', { method: 'POST', body: {} });
+        toast('Gmail disconnected. Email will be logged locally.');
+        await reloadTab('email');
+      } catch (error) {
+        toastError(error, 'Could not disconnect Gmail.');
+      }
     });
 
     host.querySelector('#email-test-form')?.addEventListener('submit', async (event) => {
@@ -1135,15 +1488,20 @@ export default async function renderAdmin(view, ctx) {
       await withBusy(button, async () => {
         try {
           const response = await api('/admin/email/test', { method: 'POST', body: { recipient } });
-          if (response.ok) {
-            result.innerHTML = `<span class="badge badge-success">${icon('check', 12)} Delivered via ${esc(response.method)}</span>`;
+          if (response.ok && response.method === 'smtp') {
+            result.innerHTML = `<div class="email-alert email-alert-success">${icon('check-circle', 16)}<div><strong>Delivered</strong><p>Gmail accepted the message for ${esc(recipient)}.</p></div></div>`;
             toast(`Test email delivered to ${recipient}`);
             await reloadTab('email', { quiet: true });
+          } else if (response.ok) {
+            result.innerHTML = `<div class="email-alert email-alert-amber">${icon('info', 16)}<div><strong>Saved to the dev log</strong><p>Gmail is not connected, so the message was written to <code>data/emails.log</code> instead of being delivered.</p></div></div>`;
+            await reloadTab('email', { quiet: true });
           } else {
-            result.innerHTML = `<span class="badge badge-danger">${esc(response.error || 'Could not send')}</span>`;
+            result.innerHTML = `<div class="email-alert email-alert-error">${icon('alert', 16)}<div><strong>Not delivered</strong><p>${esc(response.error || 'Could not send the test email.')}</p>${response.detail ? `<small>${esc(response.detail)}</small>` : ''}</div></div>`;
+            toastError(new Error(response.error || 'Send failed'), 'Could not send test email.');
+            await reloadTab('email', { quiet: true });
           }
         } catch (error) {
-          result.innerHTML = `<span class="badge badge-danger">${esc(error.message || 'Send failed')}</span>`;
+          result.innerHTML = `<div class="email-alert email-alert-error">${icon('alert', 16)}<div><strong>Not delivered</strong><p>${esc(error.message || 'Send failed')}</p></div></div>`;
           toastError(error, 'Could not send test email.');
         }
       });
@@ -1273,11 +1631,420 @@ export default async function renderAdmin(view, ctx) {
   };
 
   /* ---------------------------------------------------------------- */
+  /* Revenue                                                           */
+  /* ---------------------------------------------------------------- */
+
+  const paintRevenue = () => {
+    const host = bodyFor('revenue');
+    if (!host || !data.revenue) return;
+    const rev = data.revenue;
+    const cfg = rev.config;
+    const totals = rev.totals;
+    const splitLabel = cfg.model === 'commission'
+      ? `Driver keeps fare − ${cfg.commission_rate}% commission`
+      : `Driver keeps fare + ${cfg.incentive_rate}% incentive`;
+    const maxDay = Math.max(1, ...rev.daily.map((row) => row.gross));
+
+    host.innerHTML = `
+      ${toolbar({
+        title: 'Revenue & payouts',
+        description: 'One platform-wide model, applied to every completed trip and recorded once in the ledger. The rider always pays the gross fare shown on the receipt.',
+      })}
+
+      <section class="panel admin-panel">
+        ${sectionHead('Revenue model', { description: splitLabel })}
+        <form id="revenue-form" class="field-grid">
+          <label class="field">
+            <span>Model</span>
+            <select name="model" class="field-input">
+              <option value="commission" ${cfg.model === 'commission' ? 'selected' : ''}>Commission — platform takes a cut</option>
+              <option value="incentive" ${cfg.model === 'incentive' ? 'selected' : ''}>Incentive — platform tops up the driver</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Commission rate (%)</span>
+            <input type="number" name="commission_rate" min="0" max="50" step="0.5" value="${esc(String(cfg.commission_rate))}" class="field-input">
+          </label>
+          <label class="field">
+            <span>Incentive rate (%)</span>
+            <input type="number" name="incentive_rate" min="0" max="50" step="0.5" value="${esc(String(cfg.incentive_rate))}" class="field-input">
+          </label>
+          <div class="field field-wide">
+            <button type="submit" class="btn btn-primary" data-revenue-save>${icon('wallet', 15)} Save revenue model</button>
+          </div>
+        </form>
+        <p class="fine-print">${icon('info', 13)} Only the active model applies. Changing the model never edits past ledger rows — historical payouts stay exactly as they were settled.</p>
+      </section>
+
+      <div class="stat-strip" style="margin-bottom:16px">
+        ${statCard({ label: 'Gross fares', value: money(totals.gross), hint: `${plural(totals.trips, 'completed trip')}`, icon: 'wallet', tone: 'blue' })}
+        ${statCard({ label: 'Driver take-home', value: money(totals.driver_earnings), hint: `Avg fare ${money(totals.avg_fare)}`, icon: 'award', tone: 'green' })}
+        ${statCard({ label: 'Platform earnings', value: money(totals.platform_earnings), hint: cfg.model === 'commission' ? `${money(totals.commission)} commission` : `${money(totals.incentive)} incentive paid`, icon: 'trending-up', tone: totals.platform_earnings >= 0 ? 'green' : 'red' })}
+        ${statCard({ label: 'Commission collected', value: money(totals.commission), hint: `${cfg.commission_rate}% when active`, icon: 'check-circle', tone: 'amber' })}
+        ${statCard({ label: 'Incentive paid', value: money(totals.incentive), hint: `${cfg.incentive_rate}% when active`, icon: 'zap', tone: 'violet' })}
+        ${statCard({ label: 'Ledger rows', value: String(totals.trips), hint: `Last ${rev.window_days} days`, icon: 'ticket', tone: 'blue' })}
+      </div>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Daily gross', { description: 'Gross fares and driver take-home per day.' })}
+        <div class="insight-bars">
+          ${rev.daily.length
+            ? rev.daily.map((row) => `
+              <div class="insight-bar-row">
+                <span class="insight-bar-label">${esc(row.date)}</span>
+                <div class="mini-bar"><i style="width:${Math.max(3, Math.round((row.gross / maxDay) * 100))}%"></i></div>
+                <span class="insight-bar-value">${money(row.gross)} <small>${plural(row.trips, 'trip')}</small></span>
+              </div>
+            `).join('')
+            : '<p class="text-muted">No completed trips in this window.</p>'}
+        </div>
+      </section>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Top earners', { description: 'Drivers ranked by take-home in this window.' })}
+        ${tableBlock(
+          '<th>Driver</th><th class="num">Trips</th><th class="num">Gross</th><th class="num">Commission</th><th class="num">Incentive</th><th class="num">Take-home</th>',
+          rev.by_driver.map((row) => `<tr>
+            <td><strong>${esc(row.name)}</strong>${row.vehicle_class ? ` <small class="text-muted">${esc(vehicleClass(row.vehicle_class).name)}</small>` : ''}</td>
+            <td class="num">${row.trips}</td>
+            <td class="num">${money(row.gross)}</td>
+            <td class="num">${money(row.commission)}</td>
+            <td class="num">${money(row.incentive)}</td>
+            <td class="num"><strong>${money(row.take_home)}</strong></td>
+          </tr>`).join(''),
+          { icon: 'award', title: 'No payouts yet', text: 'Ledger rows appear when trips complete.' },
+        )}
+      </section>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Recent ledger', { description: 'Every completed trip is settled exactly once.' })}
+        ${tableBlock(
+          '<th>When</th><th>Ride</th><th>Driver</th><th>Rider</th><th class="num">Fare</th><th>Model</th><th class="num">Driver earned</th>',
+          rev.recent.map((row) => `<tr>
+            <td class="nowrap">${esc(relative(row.created_at))}</td>
+            <td class="nowrap"><strong>${esc(row.code || `#${row.booking_id}`)}</strong></td>
+            <td>${esc(row.driver_name)}</td>
+            <td>${esc(row.rider_name)}</td>
+            <td class="num">${money(row.fare)}</td>
+            <td>${pill(titleCase(row.model), row.model === 'incentive' ? 'violet' : 'blue')}</td>
+            <td class="num"><strong>${money(row.driver_earning)}</strong></td>
+          </tr>`).join(''),
+          { icon: 'ticket', title: 'No ledger entries', text: 'Completed trips are settled into the ledger automatically.' },
+        )}
+      </section>
+    `;
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* Audience (website analytics)                                      */
+  /* ---------------------------------------------------------------- */
+
+  const paintAnalytics = () => {
+    const host = bodyFor('analytics');
+    if (!host || !data.analytics) return;
+    const an = data.analytics;
+    const maxDay = Math.max(1, ...an.daily.map((row) => row.pageviews));
+    const maxEvent = Math.max(1, ...an.events_by_type.map((row) => row.count));
+    const maxPage = Math.max(1, ...an.top_pages.map((row) => row.pageviews));
+    const maxRef = Math.max(1, ...an.top_referrers.map((row) => row.pageviews));
+
+    host.innerHTML = `
+      ${toolbar({
+        title: 'Website audience',
+        description: 'Aggregate page counters for advertisers. No cookies, no IP addresses, no user ids and no query strings are stored.',
+      })}
+
+      <div class="stat-strip" style="margin-bottom:16px">
+        ${statCard({ label: 'Page views', value: String(an.pageviews), hint: `Last ${an.window_days} days`, icon: 'eye', tone: 'blue' })}
+        ${statCard({ label: 'Tracked events', value: String(an.events), hint: `${plural(an.events_by_type.length, 'event type')}`, icon: 'sparkle', tone: 'violet' })}
+        ${statCard({ label: 'Active days', value: String(an.active_days), hint: 'Days with any traffic', icon: 'calendar', tone: 'green' })}
+        ${statCard({ label: 'Daily average', value: String(an.daily_average), hint: 'Page views per active day', icon: 'trending-up', tone: 'amber' })}
+      </div>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Traffic over time', { description: 'Page views per day in this window.' })}
+        <div class="insight-bars">
+          ${an.daily.map((row) => `
+            <div class="insight-bar-row">
+              <span class="insight-bar-label">${esc(row.day)}</span>
+              <div class="mini-bar"><i style="width:${row.pageviews ? Math.max(3, Math.round((row.pageviews / maxDay) * 100)) : 0}%"></i></div>
+              <span class="insight-bar-value">${row.pageviews} <small>${plural(row.events, 'event')}</small></span>
+            </div>
+          `).join('')}
+        </div>
+      </section>
+
+      <div class="insight-split">
+        <section class="panel admin-panel">
+          ${sectionHead('Top pages', { description: 'Paths are normalised — ids are collapsed to /:id.' })}
+          <div class="insight-bars">
+            ${an.top_pages.length
+              ? an.top_pages.map((row) => `
+                <div class="insight-bar-row">
+                  <span class="insight-bar-label">${esc(row.path)}</span>
+                  <div class="mini-bar"><i style="width:${Math.max(3, Math.round((row.pageviews / maxPage) * 100))}%"></i></div>
+                  <span class="insight-bar-value">${row.pageviews}</span>
+                </div>
+              `).join('')
+              : '<p class="text-muted">No page views recorded yet.</p>'}
+          </div>
+        </section>
+
+        <section class="panel admin-panel">
+          ${sectionHead('Where visitors come from', { description: 'Referrer host only — never the full URL.' })}
+          <div class="insight-bars">
+            ${an.top_referrers.length
+              ? an.top_referrers.map((row) => `
+                <div class="insight-bar-row">
+                  <span class="insight-bar-label">${esc(row.host)}</span>
+                  <div class="mini-bar"><i style="width:${Math.max(3, Math.round((row.pageviews / maxRef) * 100))}%"></i></div>
+                  <span class="insight-bar-value">${row.pageviews}</span>
+                </div>
+              `).join('')
+              : '<p class="text-muted">No external referrers yet.</p>'}
+          </div>
+        </section>
+      </div>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Events', { description: 'Actions counted across the public website.' })}
+        <div class="insight-bars">
+          ${an.events_by_type.length
+            ? an.events_by_type.map((row) => `
+              <div class="insight-bar-row">
+                <span class="insight-bar-label">${esc(titleCase(row.event))}</span>
+                <div class="mini-bar"><i style="width:${Math.max(3, Math.round((row.count / maxEvent) * 100))}%"></i></div>
+                <span class="insight-bar-value">${row.count}</span>
+              </div>
+            `).join('')
+            : '<p class="text-muted">No events recorded yet.</p>'}
+        </div>
+        <p class="fine-print">${icon('shield', 13)} ${esc(an.privacy.note)}</p>
+      </section>
+    `;
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* Area map (geohash performance dashboard)                          */
+  /* ---------------------------------------------------------------- */
+
+  let areaMap = null;
+  let areaLayer = null;
+  let areaMetric = 'requests';
+
+  const AREA_METRICS = [
+    { key: 'requests', label: 'Requests', hint: 'Ride requests in this area' },
+    { key: 'success', label: 'Success rate', hint: 'Completed ÷ requested' },
+    { key: 'revenue', label: 'Money', hint: 'Gross fares from completed trips' },
+  ];
+
+  const destroyAreaMap = () => {
+    if (areaLayer) {
+      try { areaLayer.clearLayers(); } catch { /* ignore */ }
+      areaLayer = null;
+    }
+    if (areaMap) {
+      try { areaMap.destroy(); } catch { /* ignore */ }
+      areaMap = null;
+    }
+  };
+
+  const areaTone = (cell) => {
+    if (cell.requests < 1) return 'muted';
+    if (cell.success_delta >= 8) return 'green';
+    if (cell.success_delta <= -8) return 'red';
+    return 'amber';
+  };
+
+  const paintAreaMap = () => {
+    const host = bodyFor('map');
+    if (!host || !data.map) return;
+    // Tear down any previous Leaflet instance before replacing the panel DOM.
+    destroyAreaMap();
+    const demand = data.map.demand || {};
+    const cells = demand.areas || [];
+    const totals = demand.totals || {
+      requests: 0, completed: 0, cancelled: 0, gross: 0, success_rate: 0, avg_fare: 0,
+    };
+
+    if (!cells.length) {
+      host.innerHTML = `
+        ${toolbar({ title: 'Active areas', description: 'Ride success and money by area.' })}
+        ${emptyState({ icon: 'map-pin', title: 'No pickup areas yet', text: 'Areas appear here once riders start requesting trips.' })}
+      `;
+      return;
+    }
+
+    const bestSuccess = [...cells]
+      .filter((cell) => cell.requests >= 3)
+      .sort((a, b) => b.success_rate - a.success_rate || b.requests - a.requests)[0] || null;
+    const bestMoney = [...cells].sort((a, b) => b.gross - a.gross)[0] || null;
+
+    host.innerHTML = `
+      ${toolbar({
+        title: 'Active areas',
+        description: `Ride success and money for the last ${data.map.window_days} days. Every bubble is a ~1.2 km geohash cell; bubble size follows the selected metric and the legend explains the colour.`,
+      })}
+
+      <div class="stat-strip" style="margin-bottom:16px">
+        ${statCard({ label: 'Areas with demand', value: String(cells.length), hint: `${demand.cells_covered} cells in window`, icon: 'map-pin', tone: 'blue' })}
+        ${statCard({ label: 'Ride success', value: `${totals.success_rate}%`, hint: `${totals.completed} of ${totals.requests} requests completed`, icon: 'check-circle', tone: totals.success_rate >= 60 ? 'green' : 'amber' })}
+        ${statCard({ label: 'Gross fares', value: money(totals.gross), hint: `Avg fare ${money(totals.avg_fare)}`, icon: 'wallet', tone: 'green' })}
+        ${statCard({ label: 'Online drivers', value: String(demand.online_supply || 0), hint: 'Across all areas now', icon: 'car', tone: 'violet' })}
+      </div>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Where the city is moving', { description: 'Tap a bubble for the area breakdown. Toggle the metric to compare volume, success and money.' })}
+        <div class="area-metric-toggle" role="group" aria-label="Map metric">
+          ${AREA_METRICS.map((metric) => `
+            <button type="button" class="btn btn-xs ${areaMetric === metric.key ? 'btn-primary' : 'btn-ghost'}" data-area-metric="${metric.key}" title="${esc(metric.hint)}">${esc(metric.label)}</button>
+          `).join('')}
+        </div>
+        <div id="area-map" class="area-map-canvas" aria-label="Area performance map"></div>
+        <div class="area-legend" id="area-legend"></div>
+      </section>
+
+      <div class="area-callouts">
+        ${bestSuccess ? `
+          <div class="area-callout">
+            <span class="area-callout-label">${icon('check-circle', 14)} Highest success</span>
+            <strong>${esc(bestSuccess.sample || `${bestSuccess.lat.toFixed(2)}, ${bestSuccess.lng.toFixed(2)}`)}</strong>
+            <span>${bestSuccess.success_rate}% · ${bestSuccess.completed} of ${bestSuccess.requests} · ${bestSuccess.success_delta >= 0 ? '+' : ''}${bestSuccess.success_delta} pts vs city</span>
+          </div>` : ''}
+        ${bestMoney ? `
+          <div class="area-callout">
+            <span class="area-callout-label">${icon('wallet', 14)} Most money</span>
+            <strong>${esc(bestMoney.sample || `${bestMoney.lat.toFixed(2)}, ${bestMoney.lng.toFixed(2)}`)}</strong>
+            <span>${money(bestMoney.gross)} · ${bestMoney.gross_share}% of city gross · ${bestMoney.completed} trips</span>
+          </div>` : ''}
+      </div>
+
+      <section class="panel admin-panel">
+        ${sectionHead('Area scoreboard', { description: 'Success and money compared with the citywide baseline, busiest areas first.' })}
+        ${tableBlock(
+          '<th class="num">#</th><th>Area</th><th class="num">Requests</th><th class="num">Success</th><th class="num">vs city</th><th class="num">Gross</th><th class="num">Avg fare</th><th class="num">Money share</th><th class="num">Online</th><th class="num">Surge</th>',
+          cells.map((cell, index) => `<tr>
+            <td class="num">${index + 1}</td>
+            <td><strong>${esc(cell.sample || `${cell.lat.toFixed(2)}, ${cell.lng.toFixed(2)}`)}</strong><br><small class="text-muted">${esc(cell.cell)} · peak ${cell.peak_hour == null ? '—' : `${String(cell.peak_hour).padStart(2, '0')}:00`}</small></td>
+            <td class="num">${cell.requests} <small class="text-muted">(${cell.request_share}%)</small></td>
+            <td class="num">${pill(`${cell.success_rate}%`, areaTone(cell))}</td>
+            <td class="num">${cell.success_delta >= 0 ? '+' : ''}${cell.success_delta} pts</td>
+            <td class="num"><strong>${money(cell.gross)}</strong></td>
+            <td class="num">${cell.avg_fare ? money(cell.avg_fare) : '—'}</td>
+            <td class="num">${cell.gross_share}%</td>
+            <td class="num">${cell.online_drivers}</td>
+            <td class="num">${cell.surge > 1 ? pill(`×${cell.surge}`, 'amber') : pill('×1', 'muted')}</td>
+          </tr>`).join(''),
+          { icon: 'map-pin', title: 'No areas yet', text: 'Area performance appears once rides are requested.' },
+        )}
+      </section>
+    `;
+
+    const mapEl = host.querySelector('#area-map');
+    if (!mapEl) return;
+    areaMap = new RideMap(mapEl, { center: { lat: ADDIS.lat, lng: ADDIS.lng }, zoom: 12 });
+    const legendEl = host.querySelector('#area-legend');
+
+    const paintCells = () => {
+      if (!areaMap?.map || !window.L) return;
+      const L = window.L;
+      if (!areaLayer) areaLayer = L.layerGroup().addTo(areaMap.map);
+      areaLayer.clearLayers();
+
+      const maxRequests = Math.max(1, ...cells.map((cell) => cell.requests));
+      const maxGross = Math.max(1, ...cells.map((cell) => cell.gross));
+
+      const colorFor = (cell) => {
+        if (areaMetric === 'success') {
+          if (cell.success_rate >= totals.success_rate + 10) return '#15803d';
+          if (cell.success_rate >= totals.success_rate) return '#65a30d';
+          if (cell.success_rate >= totals.success_rate - 10) return '#d97706';
+          return '#b91c1c';
+        }
+        if (areaMetric === 'revenue') {
+          const share = cell.gross / maxGross;
+          if (share >= 0.6) return '#15803d';
+          if (share >= 0.3) return '#0f766e';
+          if (share > 0) return '#0ea5e9';
+          return '#94a3b8';
+        }
+        const share = cell.requests / maxRequests;
+        if (share >= 0.6) return '#b91c1c';
+        if (share >= 0.3) return '#ea580c';
+        return '#f59e0b';
+      };
+
+      const radiusFor = (cell) => {
+        // Size always tracks volume so a single lucky request never looks huge;
+        // the colour carries the success / revenue signal.
+        if (areaMetric === 'revenue') return 12 + Math.sqrt(cell.gross / maxGross) * 26;
+        return 12 + Math.sqrt(cell.requests / maxRequests) * 26;
+      };
+
+      for (const cell of cells) {
+        const label = cell.sample || `${cell.lat.toFixed(2)}, ${cell.lng.toFixed(2)}`;
+        const marker = L.circleMarker([cell.lat, cell.lng], {
+          radius: radiusFor(cell),
+          color: '#ffffff',
+          weight: 1.5,
+          fillColor: colorFor(cell),
+          fillOpacity: 0.72,
+        }).addTo(areaLayer);
+        marker.bindTooltip(
+          `<strong>${esc(label)}</strong><br>${cell.requests} requests · ${cell.success_rate}% success<br>${money(cell.gross)} gross`,
+          { direction: 'top', opacity: 0.95 },
+        );
+        marker.bindPopup(`
+          <strong>${esc(label)}</strong><br>
+          <small>${esc(cell.cell)}</small>
+          <hr>
+          Requests: <strong>${cell.requests}</strong> (${cell.request_share}% of city)<br>
+          Completed: <strong>${cell.completed}</strong> · Cancelled: ${cell.cancelled} · Active: ${cell.active}<br>
+          Success: <strong>${cell.success_rate}%</strong> (${cell.success_delta >= 0 ? '+' : ''}${cell.success_delta} pts vs city)<br>
+          Gross: <strong>${money(cell.gross)}</strong> · Avg fare ${cell.avg_fare ? money(cell.avg_fare) : '—'}<br>
+          Online drivers: ${cell.online_drivers} · Surge hint ${cell.surge > 1 ? `×${cell.surge}` : 'none'}
+        `);
+      }
+
+      const bounds = L.latLngBounds(cells.map((cell) => [cell.lat, cell.lng]));
+      if (bounds.isValid()) areaMap.map.fitBounds(bounds.pad(0.2), { maxZoom: 13 });
+
+      if (legendEl) {
+        legendEl.innerHTML = areaMetric === 'success'
+          ? '<span><i style="background:#15803d"></i> Above city average</span><span><i style="background:#d97706"></i> Near average</span><span><i style="background:#b91c1c"></i> Below average</span>'
+          : areaMetric === 'revenue'
+            ? '<span><i style="background:#15803d"></i> Highest gross</span><span><i style="background:#0f766e"></i> Mid gross</span><span><i style="background:#0ea5e9"></i> Lower gross</span><span><i style="background:#94a3b8"></i> No completed trips</span>'
+            : '<span><i style="background:#b91c1c"></i> Busiest</span><span><i style="background:#ea580c"></i> Busy</span><span><i style="background:#f59e0b"></i> Quiet</span>';
+      }
+    };
+
+    paintCells();
+
+    host.querySelectorAll('[data-area-metric]').forEach((button) => {
+      button.addEventListener('click', () => {
+        areaMetric = button.dataset.areaMetric;
+        host.querySelectorAll('[data-area-metric]').forEach((other) => {
+          const active = other.dataset.areaMetric === areaMetric;
+          other.classList.toggle('btn-primary', active);
+          other.classList.toggle('btn-ghost', !active);
+        });
+        paintCells();
+      });
+    });
+
+    window.setTimeout(() => areaMap?.invalidate(), 120);
+  };
+
+  /* ---------------------------------------------------------------- */
   /* Loaders                                                           */
   /* ---------------------------------------------------------------- */
 
   const painters = {
     overview: paintOverview,
+    insights: paintInsights,
+    map: paintAreaMap,
+    revenue: paintRevenue,
+    analytics: paintAnalytics,
     drivers: paintDrivers,
     users: paintUsers,
     bookings: paintBookings,
@@ -1293,6 +2060,10 @@ export default async function renderAdmin(view, ctx) {
 
   const loaders = {
     overview: () => api('/admin/overview').then((result) => { data.overview = result; }),
+    insights: () => api('/admin/insights?days=30').then((result) => { data.insights = result; }),
+    map: () => api('/admin/insights?days=30').then((result) => { data.map = result; }),
+    revenue: () => api('/admin/revenue?days=30').then((result) => { data.revenue = result; }),
+    analytics: () => api('/admin/analytics?days=30').then((result) => { data.analytics = result; }),
     drivers: () => api('/admin/drivers').then((result) => { data.drivers = result.drivers || []; }),
     users: () => {
       const params = new URLSearchParams();
@@ -2013,6 +2784,8 @@ export default async function renderAdmin(view, ctx) {
 
   const showTab = (next, { updateUrl = true } = {}) => {
     if (!TABS.some((t) => t.key === next)) return;
+    // Leaflet maps keep DOM listeners; drop the instance when the panel is hidden.
+    if (next !== 'map') destroyAreaMap();
     tab = next;
     view.querySelectorAll('[data-tab]').forEach((button) => {
       const active = button.dataset.tab === next;
@@ -2027,6 +2800,32 @@ export default async function renderAdmin(view, ctx) {
     }
     void loadTab(next);
   };
+
+  pageEl.addEventListener('submit', async (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || form.id !== 'revenue-form') return;
+    event.preventDefault();
+    const values = new FormData(form);
+    const button = form.querySelector('[data-revenue-save]');
+    await withBusy(button, async () => {
+      try {
+        const result = await api('/admin/revenue', {
+          method: 'PATCH',
+          body: {
+            model: String(values.get('model') || 'commission'),
+            commission_rate: Number(values.get('commission_rate') || 0),
+            incentive_rate: Number(values.get('incentive_rate') || 0),
+          },
+        });
+        data.revenue = { ...data.revenue, config: result.config };
+        toast(`Revenue model saved: ${result.config.model} · commission ${result.config.commission_rate}% · incentive ${result.config.incentive_rate}%`);
+        await reloadTab('revenue', { quiet: false });
+        loaded.delete('insights');
+      } catch (error) {
+        toastError(error, 'Could not save the revenue model.');
+      }
+    });
+  });
 
   pageEl.addEventListener('click', async (event) => {
     const tabBtn = event.target.closest('[data-tab]');
@@ -2295,5 +3094,6 @@ export default async function renderAdmin(view, ctx) {
 
   return () => {
     window.clearTimeout(userTimer);
+    destroyAreaMap();
   };
 }

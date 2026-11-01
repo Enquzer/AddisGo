@@ -86,6 +86,7 @@ export default async function renderDriver(view, ctx) {
 
   let driver = null;
   let stats = null;
+  let revenueModel = null;
   let activeTrips = [];
   let requests = [];
   let loadingRequests = false;
@@ -106,6 +107,7 @@ export default async function renderDriver(view, ctx) {
     if (meResult.status === 'rejected') throw meResult.reason;
     driver = meResult.value.driver;
     stats = meResult.value.stats;
+    revenueModel = meResult.value.revenue_model || null;
     activeTrips = tripsResult.status === 'fulfilled' ? tripsResult.value.bookings || [] : [];
   } catch (error) {
     view.innerHTML = `<div class="panel narrow-panel">
@@ -153,11 +155,17 @@ export default async function renderDriver(view, ctx) {
 
   const paintStats = () => {
     if (!stats) return;
+    const model = revenueModel?.model === 'incentive'
+      ? `+${Number(revenueModel.incentive_rate || 0)}% incentive`
+      : `−${Number(revenueModel?.commission_rate ?? 0)}% commission`;
+    const acceptance = stats.acceptance_rate == null ? '—' : `${stats.acceptance_rate}%`;
     statsEl.innerHTML = [
-      statCard({ label: 'Today', value: money(stats.earnings_today), hint: 'Completed fares', icon: 'wallet', tone: 'green' }),
-      statCard({ label: 'This week', value: money(stats.earnings_week), hint: 'Rolling 7 days', icon: 'trending-up', tone: 'blue' }),
+      statCard({ label: 'Take-home today', value: money(stats.earnings_today), hint: stats.gross_today ? `Gross ${money(stats.gross_today)}` : 'Completed trips', icon: 'wallet', tone: 'green' }),
+      statCard({ label: 'Take-home this week', value: money(stats.earnings_week), hint: model, icon: 'trending-up', tone: 'blue' }),
+      statCard({ label: 'Online this week', value: minutes(stats.online_minutes_week), hint: `${plural(stats.sessions_week || 0, 'session')} · ${minutes(stats.idle_minutes_week)} idle`, icon: 'clock', tone: 'violet' }),
+      statCard({ label: 'Acceptance', value: acceptance, hint: `${stats.accepted_offers_week || 0} of ${stats.offers_week || 0} offers`, icon: 'check-circle', tone: 'amber' }),
       statCard({ label: 'Active trip', value: stats.active_bookings ? plural(stats.active_bookings, 'trip') : 'None', hint: stats.active_bookings ? 'Open it now' : 'Ready for the next one', icon: 'car', tone: stats.active_bookings ? 'amber' : 'violet' }),
-      statCard({ label: 'Lifetime', value: money(stats.earnings_total), hint: `${plural(stats.trips_total, 'trip')} completed`, icon: 'award', tone: 'amber' }),
+      statCard({ label: 'Lifetime', value: money(stats.earnings_total), hint: `${plural(stats.trips_total, 'trip')} completed`, icon: 'award', tone: 'green' }),
     ].join('');
   };
 
@@ -231,6 +239,23 @@ export default async function renderDriver(view, ctx) {
               <li class="${driver.trips > 0 ? 'is-done' : ''}">${icon(driver.trips > 0 ? 'check-circle' : 'car', 16)} <span>Complete your first trip</span></li>
               <li>${icon('qr', 16)} <span>Verify the rider's pass code at pickup</span></li>
             </ul>
+          </section>
+
+          <section class="panel">
+            ${sectionHead('Earnings & air-time', {
+              description: `Rolling 7 days · ${revenueModel?.model === 'incentive' ? 'incentive model' : 'commission model'}`,
+            })}
+            <dl class="driver-facts driver-facts-stack">
+              <div><dt>Gross fares</dt><dd>${money(stats?.gross_week ?? 0)}</dd></div>
+              <div><dt>${revenueModel?.model === 'incentive' ? 'Incentive earned' : 'Platform commission'}</dt><dd>${revenueModel?.model === 'incentive' ? `+${money(stats?.incentive_week ?? 0)}` : `−${money(stats?.commission_week ?? 0)}`}</dd></div>
+              <div><dt>Your take-home</dt><dd><strong>${money(stats?.earnings_week ?? 0)}</strong></dd></div>
+              <div><dt>Online</dt><dd>${minutes(stats?.online_minutes_week ?? 0)}</dd></div>
+              <div><dt>Idle (online, no trip)</dt><dd>${minutes(stats?.idle_minutes_week ?? 0)}</dd></div>
+              <div><dt>Average session</dt><dd>${minutes(stats?.avg_session_minutes_week ?? 0)}</dd></div>
+            </dl>
+            ${Number(stats?.app_closed_week || 0) > 0
+              ? `<p class="fine-print">${icon('info', 13)} ${plural(stats.app_closed_week, 'session')} ended when the app stopped responding — those are not counted as online time after the last beat.</p>`
+              : ''}
           </section>
 
           <section class="panel">
@@ -708,6 +733,7 @@ export default async function renderDriver(view, ctx) {
           if (destroyed) return;
           driver = data.driver;
           stats = data.stats;
+          revenueModel = data.revenue_model || revenueModel;
           paintStatus();
           paintStats();
         } catch {
@@ -720,6 +746,38 @@ export default async function renderDriver(view, ctx) {
   const stopPoller = () => {
     requestsPoller?.stop();
     requestsPoller = null;
+  };
+
+  /* Presence: tell the server the app is still alive while the driver is online. */
+  let heartbeatTimer = null;
+  const beat = async () => {
+    if (!driver?.is_online || destroyed) return;
+    try {
+      const body = driver.lat != null && driver.lng != null
+        ? { lat: driver.lat, lng: driver.lng }
+        : {};
+      const result = await api('/driver/heartbeat', { method: 'POST', body });
+      if (destroyed) return;
+      if (result?.online === false) {
+        // The server already considers us offline (e.g. suspended).
+        driver = { ...driver, is_online: false };
+        stopHeartbeat();
+        stopPoller();
+        paintStatus();
+        paintOverview();
+      }
+    } catch {
+      /* a dropped beat is not fatal; the next one will land */
+    }
+  };
+  const startHeartbeat = () => {
+    if (heartbeatTimer || destroyed) return;
+    void beat();
+    heartbeatTimer = setInterval(() => void beat(), 25_000);
+  };
+  const stopHeartbeat = () => {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
   };
 
   const setOnline = async (next) => {
@@ -749,10 +807,12 @@ export default async function renderDriver(view, ctx) {
       paintRequests();
       if (next) {
         startPoller();
+        startHeartbeat();
         toast('You are online. Watching for nearby requests.');
         await loadRequests({ quiet: true });
       } else {
         stopPoller();
+        stopHeartbeat();
         toast('You are offline. No new requests will arrive.', { type: 'info' });
       }
     } catch (error) {
@@ -777,6 +837,7 @@ export default async function renderDriver(view, ctx) {
       ]);
       driver = meResult.driver;
       stats = meResult.stats;
+      revenueModel = meResult.revenue_model || revenueModel;
       activeTrips = tripsResult.bookings || [];
       if (!quiet) toast('Dashboard updated.');
       paintStatus();
@@ -894,6 +955,7 @@ export default async function renderDriver(view, ctx) {
 
   const onVisible = () => {
     if (document.hidden) return;
+    if (driver?.is_online) void beat();
     void loadRequests({ quiet: true });
   };
   document.addEventListener('visibilitychange', onVisible);
@@ -910,11 +972,13 @@ export default async function renderDriver(view, ctx) {
   if (driver.is_online) {
     void loadRequests({ quiet: true });
     startPoller();
+    startHeartbeat();
   }
 
   return () => {
     destroyed = true;
     stopPoller();
+    stopHeartbeat();
     view.removeEventListener('click', onViewClick);
     document.removeEventListener('visibilitychange', onVisible);
   };

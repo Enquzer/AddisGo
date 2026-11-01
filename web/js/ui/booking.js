@@ -111,20 +111,100 @@ export function classPicker(classes, selected, estimates = {}, { name = 'vehicle
   </div>`;
 }
 
-export function openRating(booking, { onRated } = {}) {
-  let score = 5;
+/* --- Feedback modals ----------------------------------------------------- */
+
+const ASPECTS = [
+  { key: 'car_condition', label: 'Car condition', icon: 'car' },
+  { key: 'comfort', label: 'Comfort', icon: 'sparkle' },
+  { key: 'cleanliness', label: 'Tidiness', icon: 'check' },
+  { key: 'service', label: 'Service', icon: 'user' },
+  { key: 'safety', label: 'Safety', icon: 'shield' },
+];
+
+let feedbackOptions = null;
+
+/** Reason codes and tag vocabularies live on the server; fetched once per session. */
+async function loadFeedbackOptions() {
+  if (!feedbackOptions) {
+    try {
+      feedbackOptions = await api('/public/cancel-reasons');
+    } catch {
+      feedbackOptions = { rider: [], driver: [], rating_tags: { rider: [], driver: [] } };
+    }
+  }
+  return feedbackOptions;
+}
+
+function starButtons(value, size = 26) {
+  return [1, 2, 3, 4, 5]
+    .map((n) => `<button type="button" class="rating-star ${n <= value ? 'is-on' : ''}" data-score="${n}" aria-label="${n} star${n > 1 ? 's' : ''}">${icon('star', size)}</button>`)
+    .join('');
+}
+
+/**
+ * Two-sided rating modal.
+ *
+ *  role 'rider'  → driver score with car/comfort/tidiness/service/safety rows.
+ *  role 'driver' → rider score with rider tags only.
+ *
+ * Punctuality is not a question: it is derived from the arrival telemetry and
+ * shown back to the rider so the score is never a surprise.
+ */
+export async function openRating(booking, { onRated, role = 'rider' } = {}) {
+  const isDriver = role === 'driver';
+  const options = await loadFeedbackOptions();
+  const tagList = options.rating_tags?.[isDriver ? 'driver' : 'rider'] ?? [];
+
+  let overall = 5;
+  const aspectScores = Object.fromEntries(ASPECTS.map((aspect) => [aspect.key, 0]));
+  const selectedTags = new Set();
+
+  const delay = booking.arrival_delay_min;
+  const punctuality = isDriver
+    ? ''
+    : `<div class="rate-punctuality">
+        ${icon('clock', 14)}
+        ${delay == null
+          ? '<span>Arrival timing was not recorded for this trip.</span>'
+          : delay <= 0
+            ? '<span>Arrived on time. Punctuality is scored automatically.</span>'
+            : `<span>Arrived <strong>${delay} min</strong> after the promised ETA. Punctuality is scored automatically.</span>`}
+      </div>`;
+
+  const aspectRows = isDriver
+    ? ''
+    : `<div class="rate-aspects">
+        ${ASPECTS.map((aspect) => `
+          <div class="rate-row" data-aspect="${aspect.key}">
+            <span class="rate-row-label">${icon(aspect.icon, 14)} ${esc(aspect.label)}</span>
+            <div class="rating-input rating-input-sm" role="radiogroup" aria-label="${esc(aspect.label)}">${starButtons(0, 18)}</div>
+          </div>
+        `).join('')}
+      </div>`;
+
   const modal = openModal({
-    title: 'How was your ride?',
+    title: isDriver ? 'How was your rider?' : 'How was your ride?',
     eyebrow: `Trip ${booking.code}`,
     size: 'sm',
     body: `
-      <p class="modal-text">Your feedback helps riders and drivers trust each other.</p>
-      <div class="rating-input" role="radiogroup" aria-label="Star rating">
-        ${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="rating-star ${n <= score ? 'is-on' : ''}" data-score="${n}" aria-label="${n} star${n > 1 ? 's' : ''}">${icon('star', 30)}</button>`).join('')}
+      <p class="modal-text">${isDriver ? 'Riders with good scores get matched faster.' : 'Your feedback keeps the fleet safe and accountable.'}</p>
+      <div class="rate-overall">
+        <span class="rate-row-label">${icon('star', 14)} Overall</span>
+        <div class="rating-input" role="radiogroup" aria-label="Overall rating" data-overall>${starButtons(overall, 30)}</div>
       </div>
+      ${aspectRows}
+      ${punctuality}
+      ${tagList.length ? `
+        <div class="rate-tags" role="group" aria-label="What stood out">
+          <span class="rate-row-label">What stood out <em>(optional)</em></span>
+          <div class="tag-chips">
+            ${tagList.map((tag) => `<button type="button" class="tag-chip" data-tag="${esc(tag.code)}" aria-pressed="false">${esc(tag.label)}</button>`).join('')}
+          </div>
+        </div>
+      ` : ''}
       <label class="field">
-        <span class="field-label">A note for your driver <em>(optional)</em></span>
-        <textarea class="field-input" name="review" rows="3" maxlength="400" placeholder="Safe driving, clean car, friendly welcome…"></textarea>
+        <span class="field-label">A note ${isDriver ? 'for your rider' : 'for your driver'} <em>(optional)</em></span>
+        <textarea class="field-input" name="review" rows="3" maxlength="400" placeholder="${isDriver ? 'Ready on time, easy pickup…' : 'Safe driving, clean car, friendly welcome…'}"></textarea>
       </label>
     `,
     footer: `
@@ -133,27 +213,131 @@ export function openRating(booking, { onRated } = {}) {
     `,
   });
 
-  modal.body.querySelectorAll('[data-score]').forEach((btn) => {
+  const overallGroup = modal.body.querySelector('[data-overall]');
+  overallGroup.querySelectorAll('[data-score]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      score = Number(btn.dataset.score);
-      modal.body.querySelectorAll('[data-score]').forEach((b) => {
-        b.classList.toggle('is-on', Number(b.dataset.score) <= score);
+      overall = Number(btn.dataset.score);
+      overallGroup.querySelectorAll('[data-score]').forEach((b) => {
+        b.classList.toggle('is-on', Number(b.dataset.score) <= overall);
       });
+    });
+  });
+
+  modal.body.querySelectorAll('[data-aspect]').forEach((row) => {
+    const key = row.dataset.aspect;
+    row.querySelectorAll('[data-score]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        aspectScores[key] = Number(btn.dataset.score);
+        row.querySelectorAll('[data-score]').forEach((b) => {
+          b.classList.toggle('is-on', Number(b.dataset.score) <= aspectScores[key]);
+        });
+        row.classList.add('is-rated');
+      });
+    });
+  });
+
+  modal.body.querySelectorAll('[data-tag]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const code = btn.dataset.tag;
+      if (selectedTags.has(code)) selectedTags.delete(code);
+      else selectedTags.add(code);
+      btn.classList.toggle('is-on', selectedTags.has(code));
+      btn.setAttribute('aria-pressed', String(selectedTags.has(code)));
     });
   });
 
   modal.footer.querySelector('[data-act="later"]')?.addEventListener('click', () => modal.close());
   modal.footer.querySelector('[data-act="submit"]')?.addEventListener('click', async (event) => {
     const review = modal.body.querySelector('[name="review"]').value.trim();
+    const body = { rating: overall, review, tags: [...selectedTags] };
+    if (!isDriver) {
+      for (const aspect of ASPECTS) {
+        if (aspectScores[aspect.key] > 0) body[aspect.key] = aspectScores[aspect.key];
+      }
+    }
     await withBusy(event.currentTarget, async () => {
       try {
-        const updated = await api(`/bookings/${booking.id}/rate`, {
-          method: 'POST',
-          body: { rating: score, review },
-        });
+        const updated = await api(`/bookings/${booking.id}/rate`, { method: 'POST', body });
         modal.close();
         toast('Thanks for the feedback!');
         onRated?.(updated);
+      } catch (error) {
+        toastError(error);
+      }
+    });
+  });
+}
+
+/**
+ * Cancellation modal with coded reasons.
+ *
+ * For a driver the trip is not cancelled: it is released and automatically
+ * re-offered, so the copy says exactly that instead of "the rider must rebook".
+ */
+export async function openCancel(booking, { role = 'rider', onCancelled } = {}) {
+  const isDriver = role === 'driver';
+  const isAdmin = role === 'admin';
+  const options = await loadFeedbackOptions();
+  const reasons = (isDriver ? options.driver : options.rider) ?? [];
+  let selected = null;
+
+  const modal = openModal({
+    title: isDriver ? 'Release this trip?' : 'Cancel this ride?',
+    eyebrow: `Trip ${booking.code}`,
+    size: 'sm',
+    body: `
+      <p class="modal-text">${isDriver
+        ? 'Tell us why you cannot complete this trip. It will be offered to another driver automatically — the rider keeps their booking.'
+        : isAdmin
+          ? 'The rider and driver will both be notified. Pick the reason that best matches what happened.'
+          : 'Tell us why you are cancelling. Your answer is linked to the trip so we can fix what went wrong.'}</p>
+      <div class="reason-list" role="radiogroup" aria-label="Cancellation reason">
+        ${reasons.map((reason) => `
+          <button type="button" class="reason-option" data-code="${esc(reason.code)}" role="radio" aria-checked="false">
+            <span class="reason-dot" aria-hidden="true"></span>
+            <span class="reason-label">${esc(reason.label)}</span>
+            ${reason.fee ? '<span class="reason-fee">fee may apply</span>' : ''}
+          </button>
+        `).join('')}
+      </div>
+      <label class="field">
+        <span class="field-label">Anything else? <em>(optional)</em></span>
+        <textarea class="field-input" name="note" rows="2" maxlength="200" placeholder="Add a short note…"></textarea>
+      </label>
+    `,
+    footer: `
+      <button type="button" class="btn btn-ghost" data-act="keep">${isDriver ? 'Keep trip' : 'Keep ride'}</button>
+      <button type="button" class="btn btn-danger" data-act="confirm">${isDriver ? 'Release trip' : 'Cancel ride'}</button>
+    `,
+  });
+
+  modal.body.querySelectorAll('[data-code]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      selected = btn.dataset.code;
+      modal.body.querySelectorAll('[data-code]').forEach((b) => {
+        const on = b === btn;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-checked', String(on));
+      });
+    });
+  });
+
+  modal.footer.querySelector('[data-act="keep"]')?.addEventListener('click', () => modal.close());
+  modal.footer.querySelector('[data-act="confirm"]')?.addEventListener('click', async (event) => {
+    if (!selected) {
+      toast('Choose a reason first.');
+      return;
+    }
+    const note = modal.body.querySelector('[name="note"]').value.trim();
+    await withBusy(event.currentTarget, async () => {
+      try {
+        const updated = await api(`/bookings/${booking.id}/cancel`, {
+          method: 'POST',
+          body: { reason_code: selected, reason: note },
+        });
+        modal.close();
+        toast(isDriver ? 'Trip released. We are finding another driver.' : 'Ride cancelled.');
+        onCancelled?.(updated);
       } catch (error) {
         toastError(error);
       }

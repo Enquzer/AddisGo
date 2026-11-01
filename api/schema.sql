@@ -201,6 +201,61 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_start ON events(starts_at);
 
+/* --- Feedback, dispatch supervision and cancellation forensics ---------- */
+
+CREATE TABLE IF NOT EXISTS ratings (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id     INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    rater_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rater_role     TEXT NOT NULL CHECK (rater_role IN ('rider', 'driver')),
+    driver_id      INTEGER REFERENCES drivers(id) ON DELETE CASCADE,
+    customer_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    overall        INTEGER NOT NULL CHECK (overall BETWEEN 1 AND 5),
+    car_condition  INTEGER,
+    comfort        INTEGER,
+    cleanliness    INTEGER,
+    service        INTEGER,
+    safety         INTEGER,
+    punctuality    INTEGER,
+    tags           TEXT NOT NULL DEFAULT '[]',
+    review         TEXT NOT NULL DEFAULT '',
+    created_at     TEXT NOT NULL,
+    UNIQUE (booking_id, rater_role)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ratings_driver ON ratings(driver_id, rater_role, id DESC);
+CREATE INDEX IF NOT EXISTS idx_ratings_customer ON ratings(customer_id, rater_role, id DESC);
+
+CREATE TABLE IF NOT EXISTS cancellations (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id        INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    cancelled_by_role TEXT NOT NULL CHECK (cancelled_by_role IN ('rider', 'driver', 'admin', 'system')),
+    cancelled_by_user INTEGER REFERENCES users(id),
+    reason_code       TEXT NOT NULL,
+    blame_party       TEXT NOT NULL CHECK (blame_party IN ('rider', 'driver', 'platform', 'none')),
+    fee_applied       INTEGER NOT NULL DEFAULT 0,
+    outcome           TEXT NOT NULL CHECK (outcome IN ('trip_cancelled', 'redispatch')),
+    note              TEXT NOT NULL DEFAULT '',
+    created_at        TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cancellations_booking ON cancellations(booking_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_cancellations_reason ON cancellations(reason_code, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS dispatch_attempts (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id   INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    driver_id    INTEGER NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+    round        INTEGER NOT NULL,
+    offered_at   TEXT NOT NULL,
+    expires_at   TEXT NOT NULL,
+    outcome      TEXT NOT NULL DEFAULT 'pending'
+                 CHECK (outcome IN ('pending', 'accepted', 'declined', 'timeout', 'superseded')),
+    responded_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_dispatch_booking ON dispatch_attempts(booking_id, round);
+
 CREATE TABLE IF NOT EXISTS city_routes (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     name         TEXT NOT NULL,
@@ -216,3 +271,56 @@ CREATE TABLE IF NOT EXISTS city_routes (
                  CHECK (status IN ('active', 'inactive')),
     created_at   TEXT NOT NULL
 );
+
+/* --- Phase 2: driver presence, heartbeats and air-time ------------------- */
+
+CREATE TABLE IF NOT EXISTS driver_sessions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    driver_id      INTEGER NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+    started_at     TEXT NOT NULL,
+    last_heartbeat TEXT NOT NULL,
+    ended_at       TEXT,
+    end_reason     TEXT NOT NULL DEFAULT 'active'
+                   CHECK (end_reason IN ('active', 'offline', 'app_closed', 'suspended', 'admin')),
+    lat            REAL,
+    lng            REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_driver_sessions_driver ON driver_sessions(driver_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_driver_sessions_open ON driver_sessions(driver_id, ended_at);
+
+/* --- Phase 3: commission / incentive ledger ----------------------------- */
+
+CREATE TABLE IF NOT EXISTS trip_ledger (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id        INTEGER NOT NULL UNIQUE REFERENCES bookings(id) ON DELETE CASCADE,
+    driver_id         INTEGER REFERENCES drivers(id) ON DELETE SET NULL,
+    customer_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    fare              INTEGER NOT NULL,
+    model             TEXT NOT NULL CHECK (model IN ('commission', 'incentive')),
+    commission_rate   REAL NOT NULL DEFAULT 0,
+    commission_amount REAL NOT NULL DEFAULT 0,
+    incentive_rate    REAL NOT NULL DEFAULT 0,
+    incentive_amount  REAL NOT NULL DEFAULT 0,
+    driver_earning    REAL NOT NULL,
+    platform_earning  REAL NOT NULL,
+    created_at        TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_trip_ledger_driver ON trip_ledger(driver_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_trip_ledger_created ON trip_ledger(created_at DESC);
+
+/* --- Phase 5: privacy-safe website analytics (aggregate only) ----------- */
+
+CREATE TABLE IF NOT EXISTS web_analytics (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    day           TEXT NOT NULL,
+    path          TEXT NOT NULL,
+    referrer_host TEXT NOT NULL DEFAULT '',
+    event         TEXT NOT NULL DEFAULT 'pageview',
+    count         INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (day, path, referrer_host, event)
+);
+
+CREATE INDEX IF NOT EXISTS idx_web_analytics_day ON web_analytics(day, event);
+CREATE INDEX IF NOT EXISTS idx_web_analytics_path ON web_analytics(path, day);
